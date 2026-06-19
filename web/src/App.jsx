@@ -269,16 +269,13 @@ function ImportDialog({
             <p className="section-label">LOCAL IMPORT</p>
             <h2 id="import-title">导入 PDF</h2>
           </div>
-          <div className="dialog-header-actions">
-            {processing ? (
-              <button className="icon-button" onClick={onMinimize} aria-label="最小化导入">
-                <Minus />
+          {!processing && !interrupted ? (
+            <div className="dialog-header-actions">
+              <button className="icon-button" onClick={onClose} aria-label="关闭">
+                <X />
               </button>
-            ) : null}
-            <button className="icon-button" onClick={onClose} disabled={processing || Boolean(interrupted)} aria-label="关闭">
-              <X />
-            </button>
-          </div>
+            </div>
+          ) : null}
         </div>
 
         <input
