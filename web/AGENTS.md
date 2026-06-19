@@ -21,6 +21,7 @@ When implementing from a selected generated mock, treat that image as the source
 - On widths below 1000px, voice and rate remain separate, always-visible triggers with their own upward popovers.
 - On phone widths, reader actions collapse into a single “…” menu containing “重新识别当前页” and “复制全文”.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
-- On mobile, a page changes only after the current text has reached its scroll boundary and the user performs another swipe in the same direction.
+- If persistent storage is denied, “申请保护” opens an adaptive install flow: native PWA installation on supporting PC/Android browsers, and Add to Home Screen guidance on iPad/iPhone Safari.
+- Mobile text scrolling never changes pages. The fixed bottom transport exposes previous/next page and previous/next sentence controls around play.
 - Narrow player controls keep voice and rate separate: voice stays at the left edge, rate stays at the right edge, and play remains centered.
 - Manual re-recognition operates on the active PDF page only and replaces only that page’s recognized text.

@@ -528,10 +528,6 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
   const actionsRef = useRef(null);
   const readingPaneRef = useRef(null);
   const sourceStageRef = useRef(null);
-  const wheelDistanceRef = useRef(0);
-  const touchRef = useRef(null);
-  const touchBoundaryRef = useRef(null);
-  const switchCooldownRef = useRef(0);
   const current = document.segments[player.currentIndex] || document.segments[0];
   const displayText = current?.displayText || current?.text || "";
   const hasStoredIllustrationNotice = displayText.includes(ILLUSTRATION_NOTICE);
@@ -563,98 +559,6 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
     hasStoredIllustrationNotice,
     player.currentIndex,
   ]);
-
-  const activeScrollContainer = () => (
-    tab === "source" ? sourceStageRef.current : readingPaneRef.current
-  );
-
-  const switchPage = (direction) => {
-    const now = Date.now();
-    if (now < switchCooldownRef.current) return false;
-    const nextIndex = player.currentIndex + direction;
-    if (nextIndex < 0 || nextIndex >= document.segments.length) return false;
-    switchCooldownRef.current = now + 650;
-    wheelDistanceRef.current = 0;
-    onSelectSegment(nextIndex);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        const container = activeScrollContainer();
-        if (!container) return;
-        container.scrollTop = direction > 0 ? 0 : container.scrollHeight;
-      });
-    });
-    return true;
-  };
-
-  const handleBoundaryWheel = (event) => {
-    const container = activeScrollContainer();
-    if (!container || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
-    const atTop = container.scrollTop <= 1;
-    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
-    const direction = event.deltaY > 0 ? 1 : -1;
-    const atBoundary = direction > 0 ? atBottom : atTop;
-    if (!atBoundary) {
-      wheelDistanceRef.current = 0;
-      return;
-    }
-    wheelDistanceRef.current += Math.abs(event.deltaY);
-    if (wheelDistanceRef.current >= 90 && switchPage(direction)) event.preventDefault();
-  };
-
-  const handleTouchStart = (event) => {
-    const container = activeScrollContainer();
-    const touch = event.touches[0];
-    if (!container || !touch) return;
-    const atTop = container.scrollTop <= 1;
-    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
-    touchRef.current = {
-      y: touch.clientY,
-      atTop,
-      atBottom,
-    };
-
-    if (!atTop && !atBottom) touchBoundaryRef.current = null;
-  };
-
-  const handleTouchEnd = (event) => {
-    const container = activeScrollContainer();
-    const start = touchRef.current;
-    const touch = event.changedTouches[0];
-    touchRef.current = null;
-    if (!container || !start || !touch) return;
-    const distance = touch.clientY - start.y;
-    const direction = distance < 0 ? 1 : -1;
-    if (Math.abs(distance) < 72) return;
-
-    const atTop = container.scrollTop <= 1;
-    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
-    const boundary = direction > 0 ? "bottom" : "top";
-    const startedAtBoundary = direction > 0 ? start.atBottom : start.atTop;
-    const endedAtBoundary = direction > 0 ? atBottom : atTop;
-
-    if (!endedAtBoundary) {
-      touchBoundaryRef.current = null;
-      return;
-    }
-
-    if (startedAtBoundary && touchBoundaryRef.current === boundary) {
-      touchBoundaryRef.current = null;
-      switchPage(direction);
-      return;
-    }
-
-    touchBoundaryRef.current = boundary;
-  };
-
-  const handleBoundaryScroll = () => {
-    const container = activeScrollContainer();
-    if (!container) return;
-    const atTop = container.scrollTop <= 1;
-    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
-    if (atBottom) touchBoundaryRef.current = "bottom";
-    else if (atTop) touchBoundaryRef.current = "top";
-    else touchBoundaryRef.current = null;
-  };
 
   const openSource = () => {
     const url = URL.createObjectURL(document.file);
@@ -693,10 +597,6 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
         <section
           className="reading-pane"
           ref={readingPaneRef}
-          onScroll={handleBoundaryScroll}
-          onWheel={handleBoundaryWheel}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
         >
           <div className="reading-header">
             <div>
@@ -857,8 +757,8 @@ function PlayerBar({ document, player }) {
         </div>
       </div>
       <div className="transport">
-        <button onClick={player.previous} aria-label="上一段"><CaretLeft weight="bold" /></button>
-        <button onClick={() => player.skip(-1)} aria-label="后退一句"><SkipBack /></button>
+        <button onClick={player.previous} aria-label="上一页" title="上一页"><CaretLeft weight="bold" /></button>
+        <button onClick={() => player.skip(-1)} aria-label="上一句" title="上一句"><SkipBack /></button>
         <button
           className="main-play"
           onClick={player.toggle}
@@ -866,8 +766,8 @@ function PlayerBar({ document, player }) {
         >
           {player.isPlaying ? <Pause weight="fill" /> : <Play weight="fill" />}
         </button>
-        <button onClick={() => player.skip(1)} aria-label="前进一句"><SkipForward /></button>
-        <button onClick={player.next} aria-label="下一段"><CaretRight weight="bold" /></button>
+        <button onClick={() => player.skip(1)} aria-label="下一句" title="下一句"><SkipForward /></button>
+        <button onClick={player.next} aria-label="下一页" title="下一页"><CaretRight weight="bold" /></button>
       </div>
       <div className="player-settings">
         {rateField}

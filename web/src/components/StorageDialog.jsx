@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import {
   Archive,
   Check,
+  Desktop,
+  DeviceMobile,
   DownloadSimple,
   FolderOpen,
   HardDrives,
+  ShareNetwork,
   ShieldCheck,
   ShieldWarning,
   Trash,
@@ -29,6 +32,25 @@ const formatBytes = (bytes = 0) => {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 };
 
+const isInstalledApp = () => (
+  window.matchMedia?.("(display-mode: standalone)")?.matches
+  || window.navigator.standalone === true
+);
+
+const getInstallPlatform = () => {
+  const previewPlatform = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("install-platform")
+    : null;
+  if (["ios", "android", "mac", "desktop"].includes(previewPlatform)) return previewPlatform;
+  const userAgent = window.navigator.userAgent;
+  const appleTouchDevice = /iPad|iPhone|iPod/.test(userAgent)
+    || (/Macintosh/.test(userAgent) && window.navigator.maxTouchPoints > 1);
+  if (appleTouchDevice) return "ios";
+  if (/Android/i.test(userAgent)) return "android";
+  if (/Macintosh/i.test(userAgent)) return "mac";
+  return "desktop";
+};
+
 export function StorageDialog({ open, onClose, documents, onChanged }) {
   const restoreInputRef = useRef(null);
   const [status, setStatus] = useState(null);
@@ -37,16 +59,42 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
   const [progress, setProgress] = useState({ value: 0, detail: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installOpen, setInstallOpen] = useState(false);
+  const installPlatform = getInstallPlatform();
 
   const refreshStatus = async () => {
     setStatus(await getStorageStatus());
   };
 
   useEffect(() => {
+    const captureInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    const handleInstalled = async () => {
+      setInstallPrompt(null);
+      setInstallOpen(false);
+      const granted = await requestPersistentStorage().catch(() => false);
+      await refreshStatus().catch(() => {});
+      setMessage(granted
+        ? "应用已安装，本地存储也已获得持久化保护。"
+        : "应用已安装。持续使用后可再次申请本地存储保护。");
+    };
+    window.addEventListener("beforeinstallprompt", captureInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     setSelected(new Set());
     setMessage("");
     setError("");
+    setInstallOpen(false);
     refreshStatus().catch(() => setError("无法读取当前存储状态。"));
   }, [open]);
 
@@ -113,10 +161,20 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
                 className="secondary-button"
                 disabled={busy || !status?.supported}
                 onClick={async () => {
-                  const granted = await run("persist", () => requestPersistentStorage());
-                  setMessage(granted
-                    ? "已获得持久化保护。"
-                    : "浏览器暂未批准保护；安装为应用并持续使用后可再次申请。");
+                  const forceInstallGuide = import.meta.env.DEV
+                    && new URLSearchParams(window.location.search).has("install-guide");
+                  const granted = forceInstallGuide
+                    ? false
+                    : await run("persist", () => requestPersistentStorage());
+                  if (granted) {
+                    setMessage("已获得持久化保护。");
+                    return;
+                  }
+                  if (isInstalledApp()) {
+                    setMessage("应用已经安装；请持续使用一段时间后再次申请保护，并定期保留备份。");
+                    return;
+                  }
+                  setInstallOpen(true);
                 }}
               >
                 申请保护
@@ -262,6 +320,100 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
           </button>
         </footer>
       </section>
+
+      {installOpen ? (
+        <div className="install-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setInstallOpen(false);
+        }}>
+          <section
+            className="install-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="install-title"
+          >
+            <button
+              className="icon-button install-close"
+              onClick={() => setInstallOpen(false)}
+              aria-label="关闭安装提示"
+            >
+              <X />
+            </button>
+            <span className="install-app-icon">
+              {installPlatform === "ios" || installPlatform === "android"
+                ? <DeviceMobile weight="duotone" />
+                : <Desktop weight="duotone" />}
+            </span>
+            <p className="section-label">INSTALL APP</p>
+            <h3 id="install-title">安装“阅声”应用？</h3>
+            <p className="install-description">
+              安装后可从桌面或主屏幕直接打开，离线使用更稳定，也更有利于浏览器批准本地存储保护。
+            </p>
+
+            {installPrompt ? (
+              <div className="install-actions">
+                <button
+                  className="primary-button"
+                  onClick={async () => {
+                    const prompt = installPrompt;
+                    setInstallPrompt(null);
+                    await prompt.prompt();
+                    const choice = await prompt.userChoice;
+                    if (choice.outcome === "accepted") {
+                      setMessage("正在安装阅声；安装完成后会再次尝试申请存储保护。");
+                      setInstallOpen(false);
+                    } else {
+                      setMessage("已暂缓安装。你仍可继续使用，并建议定期导出完整备份。");
+                      setInstallOpen(false);
+                    }
+                  }}
+                >
+                  安装阅声
+                </button>
+                <button className="secondary-button" onClick={() => setInstallOpen(false)}>
+                  暂不安装
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="install-steps">
+                  {installPlatform === "ios" ? (
+                    <>
+                      <div><b>1</b><span>使用 Safari 打开当前页面</span></div>
+                      <div><b>2</b><span>点击浏览器的“分享”按钮 <ShareNetwork /></span></div>
+                      <div><b>3</b><span>选择“添加到主屏幕”，开启“作为 Web App 打开”，再点击“添加”</span></div>
+                    </>
+                  ) : null}
+                  {installPlatform === "android" ? (
+                    <>
+                      <div><b>1</b><span>打开浏览器右上角菜单</span></div>
+                      <div><b>2</b><span>选择“安装应用”或“添加到主屏幕”</span></div>
+                      <div><b>3</b><span>安装后从主屏幕打开阅声，再次点击“申请保护”</span></div>
+                    </>
+                  ) : null}
+                  {installPlatform === "mac" ? (
+                    <>
+                      <div><b>1</b><span>Safari：选择菜单“文件”→“添加到程序坞”</span></div>
+                      <div><b>2</b><span>Chrome 或 Edge：打开地址栏右侧的安装图标</span></div>
+                      <div><b>3</b><span>安装后从应用图标打开阅声，再次点击“申请保护”</span></div>
+                    </>
+                  ) : null}
+                  {installPlatform === "desktop" ? (
+                    <>
+                      <div><b>1</b><span>打开浏览器地址栏右侧的安装图标或浏览器菜单</span></div>
+                      <div><b>2</b><span>选择“安装阅声”或“将此站点安装为应用”</span></div>
+                      <div><b>3</b><span>安装后从桌面或开始菜单打开，再次点击“申请保护”</span></div>
+                    </>
+                  ) : null}
+                </div>
+                <button className="primary-button install-done" onClick={() => setInstallOpen(false)}>
+                  我知道了
+                </button>
+              </>
+            )}
+            <small>安装不会上传 PDF，也不会移动或删除当前设备上的文档。</small>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
