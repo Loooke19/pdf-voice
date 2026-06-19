@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.npm-cache/
+.DS_Store
+
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+.tef_dist/*
+  

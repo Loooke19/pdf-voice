@@ -1,0 +1,313 @@
+import * as pdfjsLib from "pdfjs-dist";
+import {
+  isSuspiciousText,
+  isUnreliableRecognizedText,
+  normalizeRecognizedText,
+} from "./textQuality";
+import { pageHasIllustration } from "./pdfVisuals";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
+
+const ILLUSTRATION_NOTICE = "【此处为配图，请查看原始版面】";
+const OCR_BASE = `${import.meta.env.BASE_URL}ocr`;
+
+function localOcrOptions(logger) {
+  return {
+    logger,
+    workerPath: `${OCR_BASE}/worker.min.js`,
+    corePath: `${OCR_BASE}/core`,
+    langPath: `${OCR_BASE}/lang`,
+    gzip: true,
+  };
+}
+
+async function extractPageText(page) {
+  const content = await page.getTextContent();
+  let previousY = null;
+  let text = "";
+  for (const item of content.items) {
+    const y = item.transform?.[5];
+    if (previousY !== null && y !== previousY) text += "\n";
+    text += `${item.str || ""} `;
+    previousY = y;
+  }
+  return text.replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+}
+
+async function renderPage(page) {
+  const viewport = page.getViewport({ scale: 2.25 });
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  await page.render({ canvasContext: context, viewport }).promise;
+  return canvas;
+}
+
+function normalizeOcrText(text) {
+  const normalized = normalizeRecognizedText(text);
+  return normalizeTableOfContents(normalized);
+}
+
+function normalizeTocPageNumber(raw) {
+  const value = raw.replace(/\s/g, "").replace(/^[.…·。]+/, "");
+  if (/^(I|l|L|1)$/.test(value)) return "1";
+  if (/^(II)$/.test(value)) return "II";
+  if (/^(III)$/.test(value)) return "III";
+  if (/^(pp|Pp|PP|Z|2)$/.test(value)) return "2";
+  if (/^(B|3)$/.test(value)) return "3";
+  if (/^(A|4)$/.test(value)) return "4";
+  if (/^(S|s|5)$/.test(value)) return "5";
+  if (/^(G|6)$/.test(value)) return "6";
+  if (/^(T|了|7)$/.test(value)) return "7";
+  if (/^(8)$/.test(value)) return "8";
+  return /^\d+$/.test(value) ? value : "";
+}
+
+function normalizeTableOfContents(text) {
+  const lines = text.split("\n").map((line) => line.trimEnd());
+  const numberedLines = lines.filter((line) => /^\s*\d+(?:\.\d+)?\s+/.test(line)).length;
+  const tocSignals = numberedLines >= 8 || lines.some((line) => /目\s*次/.test(line));
+  if (!tocSignals) return text;
+
+  return lines
+    .map((line) => {
+      let value = line
+        .replace(/^\s*[B8]\s*次\s*$/i, "目    次")
+        .replace(/^\s*[了丁]\s*(?=\d+\s)/, "")
+        .trim();
+
+      if (!value) return "";
+
+      const entry = value.match(/^((?:\d+(?:\.\d+)?)|前言|引言)\s*(.*)$/);
+      if (!entry) return value;
+
+      const prefix = entry[1];
+      let body = entry[2]
+        .replace(/[.…·。]{2,}/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const endToken = body.match(/(?:\s|\.)(II|III|pp|PP|Pp|[IlLZBASsGT了]|\d+)\s*$/);
+      let pageNumber = "";
+      if (endToken) {
+        pageNumber = normalizeTocPageNumber(endToken[1]);
+        if (pageNumber) body = body.slice(0, endToken.index).replace(/[.…·。\s]+$/, "").trim();
+      }
+
+      body = body
+        .replace(/[”"'`]+(?=[\u3400-\u9fff])/g, "")
+        .replace(/。(?=\s*(?:cloud|ease|software|indicator|measure)\b)/i, " ")
+        .trim();
+
+      const indent = prefix.includes(".") ? "  " : "";
+      return `${indent}${prefix}  ${body}${pageNumber ? `\t${pageNumber}` : ""}`;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export async function processPdf(file, { onProgress, signal, forceOcr = false }) {
+  let lastProgress = 0;
+  const report = (next) => {
+    const value = Math.max(lastProgress, Math.min(100, next.value));
+    lastProgress = value;
+    onProgress({ ...next, value });
+  };
+  const isInterrupted = () => Boolean(signal?.aborted);
+  const makeResult = (pages, totalPageCount, ocrPages, illustrationPages, interrupted = false) => {
+    const completedPages = pages.filter((pageText) => pageText?.replace(/\s/g, "").length).length;
+    const text = pages
+      .map((pageText, index) => {
+        if (!pageText) return "";
+        const notice = illustrationPages.has(index + 1)
+          && !isUnreliableRecognizedText(pageText)
+          ? `\n\n${ILLUSTRATION_NOTICE}`
+          : "";
+        return `第 ${index + 1} 页\n\n${pageText}${notice}`;
+      })
+      .filter(Boolean)
+      .join("\n\n")
+      .replace(/\n{4,}/g, "\n\n")
+      .trim();
+    return {
+      text,
+      pageCount: totalPageCount,
+      completedPages,
+      ocrPages,
+      illustrationPages: [...illustrationPages],
+      interrupted,
+    };
+  };
+
+  report({ value: 2, label: "正在打开 PDF", detail: file.name });
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const illustrationPages = new Set();
+  if (isInterrupted()) return makeResult([], 0, 0, illustrationPages, true);
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const pages = Array(pdf.numPages).fill("");
+  const pagesNeedingOcr = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    if (isInterrupted()) return makeResult(pages, pdf.numPages, 0, illustrationPages, true);
+    const page = await pdf.getPage(pageNumber);
+    const text = await extractPageText(page);
+    if (await pageHasIllustration(page, text)) illustrationPages.add(pageNumber);
+    pages[pageNumber - 1] = normalizeRecognizedText(text);
+    if (forceOcr || isSuspiciousText(text)) {
+      pagesNeedingOcr.push(pageNumber);
+      pages[pageNumber - 1] = "";
+    }
+    report({
+      value: 4 + (pageNumber / pdf.numPages) * 56,
+      label: "正在提取文字",
+      detail: `第 ${pageNumber} / ${pdf.numPages} 页`,
+    });
+  }
+
+  if (pagesNeedingOcr.length) {
+    report({
+      value: 61,
+      label: "正在准备本地 OCR",
+      detail: forceOcr
+        ? `将按原页面重新识别 ${pagesNeedingOcr.length} 页`
+        : `发现 ${pagesNeedingOcr.length} 个扫描页或异常文本页`,
+    });
+    const { createWorker } = await import("tesseract.js");
+    for (let index = 0; index < pagesNeedingOcr.length; index += 1) {
+      if (isInterrupted()) return makeResult(pages, pdf.numPages, index, illustrationPages, true);
+      let worker;
+      let terminated = false;
+      const terminate = async () => {
+        if (terminated || !worker) return;
+        terminated = true;
+        await worker.terminate();
+      };
+      const abortWorker = () => { void terminate(); };
+      signal?.addEventListener("abort", abortWorker, { once: true });
+
+      try {
+        worker = await createWorker(["chi_sim", "eng"], 1, localOcrOptions(
+          (message) => {
+            if (message.status === "recognizing text") {
+              report({
+                value: 64 + ((index + message.progress) / pagesNeedingOcr.length) * 31,
+                label: "正在识别扫描页",
+                detail: `第 ${index + 1} / ${pagesNeedingOcr.length} 个扫描页`,
+              });
+            }
+          },
+        ));
+        await worker.setParameters({ preserve_interword_spaces: "1" });
+        if (isInterrupted()) return makeResult(pages, pdf.numPages, index, illustrationPages, true);
+        const pageNumber = pagesNeedingOcr[index];
+        const page = await pdf.getPage(pageNumber);
+        const canvas = await renderPage(page);
+        const result = await worker.recognize(canvas);
+        const recognizedText = normalizeOcrText(result.data.text);
+        pages[pageNumber - 1] = isUnreliableRecognizedText(
+          recognizedText,
+          result.data.confidence,
+        )
+          ? "本页以图片为主，未识别到可靠文字。请切换到“原始版面”查看。"
+          : recognizedText;
+        report({
+          value: 64 + ((index + 1) / pagesNeedingOcr.length) * 31,
+          label: "正在识别扫描页",
+          detail: `第 ${pageNumber} 页 · ${index + 1} / ${pagesNeedingOcr.length}`,
+        });
+      } catch (error) {
+        if (isInterrupted()) return makeResult(pages, pdf.numPages, index, illustrationPages, true);
+        throw error;
+      } finally {
+        signal?.removeEventListener("abort", abortWorker);
+        await terminate();
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+    }
+  }
+
+  const result = makeResult(
+    pages,
+    pdf.numPages,
+    pagesNeedingOcr.length,
+    illustrationPages,
+  );
+
+  if (result.text.replace(/\s/g, "").length < 5) {
+    throw new Error("没有识别到可读文字。请确认 PDF 未加密，或尝试更清晰的扫描文件。");
+  }
+
+  report({ value: 100, label: "转换完成", detail: "正在保存到当前设备" });
+  return result;
+}
+
+export async function recognizePdfPage(file, pageNumber, { onProgress, signal }) {
+  const report = (value, label, detail) => onProgress?.({ value, label, detail });
+  const isInterrupted = () => Boolean(signal?.aborted);
+
+  report(4, "正在打开 PDF", file.name);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (isInterrupted()) return { interrupted: true };
+
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  if (pageNumber < 1 || pageNumber > pdf.numPages) {
+    throw new Error("当前页不存在，无法重新识别。");
+  }
+
+  report(18, "正在准备当前页", `第 ${pageNumber} / ${pdf.numPages} 页`);
+  const page = await pdf.getPage(pageNumber);
+  const extractedText = await extractPageText(page);
+  const hasIllustration = await pageHasIllustration(page, extractedText);
+  const canvas = await renderPage(page);
+  if (isInterrupted()) return { interrupted: true };
+
+  report(32, "正在准备本地 OCR", `仅重新识别第 ${pageNumber} 页`);
+  const { createWorker } = await import("tesseract.js");
+  let worker;
+  let terminated = false;
+  const terminate = async () => {
+    if (terminated || !worker) return;
+    terminated = true;
+    await worker.terminate();
+  };
+  const abortWorker = () => { void terminate(); };
+  signal?.addEventListener("abort", abortWorker, { once: true });
+
+  try {
+    worker = await createWorker(["chi_sim", "eng"], 1, localOcrOptions(
+      (message) => {
+        if (message.status === "recognizing text") {
+          report(
+            36 + message.progress * 58,
+            "正在识别当前页",
+            `第 ${pageNumber} 页`,
+          );
+        }
+      },
+    ));
+    await worker.setParameters({ preserve_interword_spaces: "1" });
+    if (isInterrupted()) return { interrupted: true };
+
+    const result = await worker.recognize(canvas);
+    const recognizedText = normalizeOcrText(result.data.text);
+    const pageText = isUnreliableRecognizedText(recognizedText, result.data.confidence)
+      ? "本页以图片为主，未识别到可靠文字。请切换到“原始版面”查看。"
+      : recognizedText;
+
+    report(100, "当前页识别完成", `第 ${pageNumber} 页`);
+    return {
+      interrupted: false,
+      pageNumber,
+      pageCount: pdf.numPages,
+      pageText,
+      hasIllustration,
+    };
+  } finally {
+    signal?.removeEventListener("abort", abortWorker);
+    await terminate();
+  }
+}
