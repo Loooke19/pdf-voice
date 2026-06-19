@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
+  ArrowDown,
   ArrowClockwise,
   BookOpenText,
   CaretLeft,
@@ -711,18 +711,21 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
   return (
     <main className="reader-shell">
       <header className="reader-topbar">
-        <div className="reader-navigation">
-          <button className="back-button" onClick={onBack}><ArrowLeft /> 返回文档库</button>
-          <button
-            className="sidebar-toggle"
-            onClick={() => setSidebarOpen((value) => !value)}
-            aria-label={sidebarOpen ? "收起页面目录" : "打开页面目录"}
-            aria-expanded={sidebarOpen}
-          >
-            <List weight="bold" />
-          </button>
-        </div>
-        <Brand />
+        <button
+          className="sidebar-toggle"
+          onClick={() => setSidebarOpen((value) => !value)}
+          aria-label={sidebarOpen ? "收起页面目录" : "打开页面目录"}
+          aria-expanded={sidebarOpen}
+        >
+          <List weight="bold" />
+        </button>
+        <button
+          className="reader-home-button"
+          onClick={onBack}
+          aria-label="返回首页"
+        >
+          <ArrowDown weight="bold" />
+        </button>
       </header>
       <div className={`reader-workspace ${sidebarOpen ? "is-sidebar-open" : "is-sidebar-closed"}`}>
         <button

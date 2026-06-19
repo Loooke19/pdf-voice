@@ -24,6 +24,7 @@ When implementing from a selected generated mock, treat that image as the source
 - Reader document titles are never ellipsized: overflowing titles loop horizontally, while reduced-motion users can scroll them manually. The inline purple segment badge is omitted.
 - The page directory is a browse-only surface: selecting an entry previews its text without changing playback. Every recognized sentence is individually clickable and starts playback from that sentence, including when previewing another page. Fine-pointer devices show sentence hover feedback; touch devices do not depend on hover. The directory is collapsible on wide screens and opens as an overlay from a hamburger control on narrow screens.
 - The directory marks playback with a compact right-aligned “播放中” badge; it does not use a left-edge playback outline.
+- The reader top bar contains only the directory toggle on the left and a downward-arrow home action on the right; it omits both the centered brand and the labeled back button.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.
 - If persistent storage is denied, “申请保护” opens an adaptive install flow: native PWA installation on supporting PC/Android browsers, and Add to Home Screen guidance on iPad/iPhone Safari.
