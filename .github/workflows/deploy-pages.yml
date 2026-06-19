@@ -35,8 +35,6 @@ jobs:
 
       - name: Build
         working-directory: web
-        env:
-          VITE_BASE_PATH: /pdf-voice/
         run: npm run build
 
       - name: Configure Pages

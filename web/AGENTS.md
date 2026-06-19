@@ -28,6 +28,7 @@ When implementing from a selected generated mock, treat that image as the source
 - Interface icons use Lucide’s restrained single-line style. The reader home action uses `ChevronDown`, and the home brand reuses the installed PWA app icon instead of a separate book glyph.
 - Activating the reader’s downward home action slides the entire reader sheet down to reveal the already-rendered library beneath it, then closes the reader after the transition.
 - Opening a document uses the inverse sheet transition: the reader rises from the bottom over the library. Both entry and dismissal use a deliberately unhurried 700ms easing with an even, readable travel pace.
+- Production is hosted free on GitHub Pages at `https://read.loooke.net/`; production assets and PWA routes therefore use the domain root rather than the former `/pdf-voice/` project subpath.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.
 - If persistent storage is denied, “申请保护” opens an adaptive install flow: native PWA installation on supporting PC/Android browsers, and Add to Home Screen guidance on iPad/iPhone Safari.
