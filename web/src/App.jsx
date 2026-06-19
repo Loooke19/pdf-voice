@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Gauge,
   Headphones,
+  List,
   LockKey,
   Minus,
   DotsThree,
@@ -365,9 +366,16 @@ function ImportDialog({
   );
 }
 
-function SourcePanel({ document, activeIndex, onSelect, onOpenSource }) {
+function SourcePanel({
+  document,
+  viewedIndex,
+  playingIndex,
+  open,
+  onSelect,
+  onOpenSource,
+}) {
   return (
-    <aside className="source-panel">
+    <aside className={`source-panel ${open ? "is-open" : ""}`} aria-hidden={!open}>
       <div className="source-file">
         <span className="source-file-icon"><FilePdf weight="duotone" /></span>
         <div>
@@ -385,9 +393,13 @@ function SourcePanel({ document, activeIndex, onSelect, onOpenSource }) {
       <div className="segment-list">
         {document.segments.map((segment, index) => (
           <button
-            className={index === activeIndex ? "is-active" : ""}
+            className={[
+              index === viewedIndex ? "is-viewing" : "",
+              index === playingIndex ? "is-playing" : "",
+            ].filter(Boolean).join(" ")}
             key={`${document.id}-${index}`}
             onClick={() => onSelect(index)}
+            aria-label={`${segment.title}${index === playingIndex ? "，正在播放" : ""}`}
           >
             <span>{String(index + 1).padStart(2, "0")}</span>
             <div>
@@ -566,12 +578,24 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
   const [copied, setCopied] = useState(false);
   const [currentHasIllustration, setCurrentHasIllustration] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 760);
+  const [viewedIndex, setViewedIndex] = useState(player.currentIndex);
   const actionsRef = useRef(null);
   const readingPaneRef = useRef(null);
   const sourceStageRef = useRef(null);
-  const current = document.segments[player.currentIndex] || document.segments[0];
+  const previousPlayingIndexRef = useRef(player.currentIndex);
+  const current = document.segments[viewedIndex] || document.segments[0];
   const displayText = current?.displayText || current?.text || "";
   const hasStoredIllustrationNotice = displayText.includes(ILLUSTRATION_NOTICE);
+  const viewingPlaybackPage = viewedIndex === player.currentIndex;
+
+  useEffect(() => {
+    const previousPlayingIndex = previousPlayingIndexRef.current;
+    setViewedIndex((index) => (
+      index === previousPlayingIndex ? player.currentIndex : index
+    ));
+    previousPlayingIndexRef.current = player.currentIndex;
+  }, [player.currentIndex]);
 
   useEffect(() => {
     if (hasStoredIllustrationNotice || !document.file) {
@@ -582,7 +606,7 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
     import("./lib/pdfPreview")
       .then(({ detectPdfPageIllustration }) => detectPdfPageIllustration(
         document.file,
-        player.currentIndex + 1,
+        viewedIndex + 1,
         current?.text || "",
       ))
       .then((result) => {
@@ -598,8 +622,22 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
     current?.text,
     document.file,
     hasStoredIllustrationNotice,
-    player.currentIndex,
+    viewedIndex,
   ]);
+
+  const browseSegment = (index) => {
+    setViewedIndex(index);
+    if (window.matchMedia("(max-width: 760px)").matches) setSidebarOpen(false);
+    window.requestAnimationFrame(() => {
+      if (readingPaneRef.current) readingPaneRef.current.scrollTop = 0;
+      if (sourceStageRef.current) sourceStageRef.current.scrollTop = 0;
+    });
+  };
+
+  const selectViewedForPlayback = () => {
+    if (viewingPlaybackPage) return;
+    onSelectSegment(viewedIndex);
+  };
 
   const openSource = () => {
     const url = URL.createObjectURL(document.file);
@@ -625,14 +663,32 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
   return (
     <main className="reader-shell">
       <header className="reader-topbar">
-        <button className="back-button" onClick={onBack}><ArrowLeft /> 返回文档库</button>
+        <div className="reader-navigation">
+          <button className="back-button" onClick={onBack}><ArrowLeft /> 返回文档库</button>
+          <button
+            className="sidebar-toggle"
+            onClick={() => setSidebarOpen((value) => !value)}
+            aria-label={sidebarOpen ? "收起页面目录" : "打开页面目录"}
+            aria-expanded={sidebarOpen}
+          >
+            <List weight="bold" />
+          </button>
+        </div>
         <Brand />
       </header>
-      <div className="reader-workspace">
+      <div className={`reader-workspace ${sidebarOpen ? "is-sidebar-open" : "is-sidebar-closed"}`}>
+        <button
+          className="source-panel-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="关闭页面目录"
+          tabIndex={sidebarOpen ? 0 : -1}
+        />
         <SourcePanel
           document={document}
-          activeIndex={player.currentIndex}
-          onSelect={onSelectSegment}
+          viewedIndex={viewedIndex}
+          playingIndex={player.currentIndex}
+          open={sidebarOpen}
+          onSelect={browseSegment}
           onOpenSource={openSource}
         />
         <section
@@ -662,7 +718,7 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
                 </button>
                 {actionsOpen ? (
                   <div className="reading-actions-popover">
-                    <button onClick={() => { setActionsOpen(false); onReprocessPage(); }}>
+                    <button onClick={() => { setActionsOpen(false); onReprocessPage(viewedIndex); }}>
                       <ArrowClockwise /> 重新识别当前页
                     </button>
                     <button onClick={() => { setActionsOpen(false); copyText(); }}>
@@ -678,14 +734,20 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
             <button className={tab === "source" ? "is-active" : ""} onClick={() => setTab("source")}>原始版面</button>
           </div>
           {tab === "text" ? (
-            <article className="text-content">
+            <article
+              className={`text-content ${viewingPlaybackPage ? "" : "is-previewing"}`}
+              onClick={selectViewedForPlayback}
+              aria-label={viewingPlaybackPage
+                ? `正在播放第 ${viewedIndex + 1} 页`
+                : `切换朗读到第 ${viewedIndex + 1} 页`}
+            >
               <h2>{current?.title}</h2>
               <pre className="recognized-layout">
                 <HighlightedText
                   displayText={displayText}
                   speechText={current?.text || ""}
                   sentenceIndex={player.sentenceIndex}
-                  active={player.isPlaying || player.sentenceIndex > 0}
+                  active={viewingPlaybackPage && (player.isPlaying || player.sentenceIndex > 0)}
                 />
               </pre>
               {currentHasIllustration && !hasStoredIllustrationNotice ? (
@@ -697,13 +759,16 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
               <div className="source-preview-toolbar">
                 <div>
                   <strong>原始 PDF 版面</strong>
-                  <span>第 {player.currentIndex + 1} 页 · 与当前朗读段落同步</span>
+                  <span>
+                    第 {viewedIndex + 1} 页
+                    {viewingPlaybackPage ? " · 与当前朗读段落同步" : " · 仅预览，未切换朗读"}
+                  </span>
                 </div>
                 <button className="secondary-button" onClick={openSource}><FolderOpen /> 新窗口打开</button>
               </div>
               <PdfPagePreview
                 file={document.file}
-                pageNumber={player.currentIndex + 1}
+                pageNumber={viewedIndex + 1}
                 stageRef={sourceStageRef}
               />
             </div>
@@ -1042,9 +1107,10 @@ export function App() {
     }
   };
 
-  const reprocessCurrentPage = async () => {
+  const reprocessCurrentPage = async (pageIndex = player.currentIndex) => {
     if (!selected?.file) return;
-    const pageNumber = player.currentIndex + 1;
+    const pageNumber = pageIndex + 1;
+    const playbackIndex = player.currentIndex;
     const controller = new AbortController();
     importControllerRef.current = controller;
     setError("");
@@ -1089,7 +1155,7 @@ export function App() {
       await saveDocument(next);
       setSelected(next);
       await refreshDocuments();
-      player.load(Math.min(pageNumber - 1, segments.length - 1), false);
+      player.load(Math.min(playbackIndex, segments.length - 1), false);
       setImportOpen(false);
     } catch (reason) {
       if (!controller.signal.aborted) {
