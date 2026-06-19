@@ -161,6 +161,26 @@ export function useSpeechPlayer(segments, onProgress) {
     }
   }, [clearProgressTimer, emitSentenceProgress, onProgress, speakFrom]);
 
+  const selectSentence = useCallback((index, requestedSentence, autoplay = true) => {
+    const count = makeSentences(segments[index]?.text || "").length;
+    const nextSentence = Math.max(0, Math.min(requestedSentence, Math.max(0, count - 1)));
+    window.speechSynthesis?.cancel();
+    clearProgressTimer();
+    emitSentenceProgress(0);
+    setSpeechError("");
+    setCurrentIndex(index);
+    setSentenceIndex(nextSentence);
+    onProgress?.(index);
+    setIsPlaying(autoplay);
+    stateRef.current = {
+      ...stateRef.current,
+      currentIndex: index,
+      sentenceIndex: nextSentence,
+      isPlaying: autoplay,
+    };
+    if (autoplay) window.setTimeout(() => speakFrom(index, nextSentence), 60);
+  }, [clearProgressTimer, emitSentenceProgress, onProgress, segments, speakFrom]);
+
   const load = useCallback((index = 0, autoplay = false) => {
     window.speechSynthesis?.cancel();
     clearProgressTimer();
@@ -291,6 +311,7 @@ export function useSpeechPlayer(segments, onProgress) {
     toggle,
     stop,
     select,
+    selectSentence,
     previous,
     next,
     skip,

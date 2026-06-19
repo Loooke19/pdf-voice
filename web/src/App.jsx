@@ -406,6 +406,7 @@ function SourcePanel({
               <strong>{segment.title}</strong>
               <small>{segment.text.slice(0, 34)}{segment.text.length > 34 ? "…" : ""}</small>
             </div>
+            {index === playingIndex ? <em className="playing-badge">播放中</em> : null}
           </button>
         ))}
       </div>
@@ -425,36 +426,84 @@ function compactWithMap(text) {
   return { compact, map };
 }
 
-function HighlightedText({ displayText, speechText, sentenceIndex, active }) {
-  if (!active) return <>{displayText}</>;
-  const sentence = makeSentences(speechText || "")[sentenceIndex] || "";
-  if (!sentence) return <>{displayText}</>;
-
+function mapDisplaySentences(displayText, speechText) {
+  const sentences = makeSentences(speechText || "");
   const source = compactWithMap(displayText);
-  const needle = compactWithMap(sentence).compact
-    .replace(/\.{3,}/g, "")
-    .slice(0, 40);
-  let matchIndex = source.compact.indexOf(needle);
-  let matchLength = needle.length;
+  const ranges = [];
+  let compactCursor = 0;
+  let displayCursor = 0;
 
-  if (matchIndex < 0) {
-    const fallback = needle.slice(0, Math.min(14, needle.length));
-    matchIndex = fallback.length >= 5 ? source.compact.indexOf(fallback) : -1;
-    matchLength = fallback.length;
+  sentences.forEach((sentence, sentenceIndex) => {
+    const compactSentence = compactWithMap(sentence).compact.replace(/\.{3,}/g, "");
+    if (!compactSentence || !source.map.length) return;
+    let matchIndex = source.compact.indexOf(compactSentence, compactCursor);
+    let matchLength = compactSentence.length;
+
+    if (matchIndex < 0) {
+      const fallback = compactSentence.slice(0, Math.min(14, compactSentence.length));
+      matchIndex = fallback.length >= 5
+        ? source.compact.indexOf(fallback, compactCursor)
+        : -1;
+      matchLength = fallback.length;
+    }
+    if (matchIndex < 0) return;
+
+    const start = source.map[matchIndex];
+    const endMapIndex = Math.min(
+      source.map.length - 1,
+      matchIndex + Math.max(1, matchLength) - 1,
+    );
+    let end = source.map[endMapIndex] + 1;
+    const matchedText = displayText.slice(start, end);
+    if (!/[。！？.!?；;]\s*$/.test(matchedText)) {
+      const sentenceEnd = displayText.slice(end).search(/[。！？.!?；;]/);
+      if (sentenceEnd >= 0 && sentenceEnd < 180) end += sentenceEnd + 1;
+    }
+    if (start > displayCursor) ranges.push({ text: displayText.slice(displayCursor, start) });
+    ranges.push({
+      text: displayText.slice(start, end),
+      sentenceIndex,
+    });
+    displayCursor = end;
+    compactCursor = matchIndex + Math.max(1, matchLength);
+  });
+
+  if (displayCursor < displayText.length) {
+    ranges.push({ text: displayText.slice(displayCursor) });
   }
-  if (matchIndex < 0 || !source.map.length) return <>{displayText}</>;
+  return ranges.length ? ranges : [{ text: displayText }];
+}
 
-  const start = source.map[matchIndex];
-  const endMapIndex = Math.min(source.map.length - 1, matchIndex + Math.max(1, matchLength) - 1);
-  let end = source.map[endMapIndex] + 1;
-  const sentenceEnd = displayText.slice(end).search(/[。！？.!?；;\n]/);
-  if (sentenceEnd >= 0 && sentenceEnd < 180) end += sentenceEnd + 1;
+function InteractiveRecognizedText({
+  displayText,
+  speechText,
+  activeSentenceIndex,
+  active,
+  onSelectSentence,
+}) {
+  const ranges = useMemo(
+    () => mapDisplaySentences(displayText, speechText),
+    [displayText, speechText],
+  );
 
   return (
     <>
-      {displayText.slice(0, start)}
-      <mark className="spoken-highlight">{displayText.slice(start, end)}</mark>
-      {displayText.slice(end)}
+      {ranges.map((range, index) => (
+        Number.isInteger(range.sentenceIndex) ? (
+          <button
+            className={`recognized-sentence ${
+              active && range.sentenceIndex === activeSentenceIndex ? "is-speaking" : ""
+            }`}
+            key={`${range.sentenceIndex}-${index}`}
+            onClick={() => onSelectSentence(range.sentenceIndex)}
+            aria-label={`从第 ${range.sentenceIndex + 1} 句开始播放`}
+          >
+            {range.text}
+          </button>
+        ) : (
+          <span key={`text-${index}`}>{range.text}</span>
+        )
+      ))}
     </>
   );
 }
@@ -634,9 +683,8 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
     });
   };
 
-  const selectViewedForPlayback = () => {
-    if (viewingPlaybackPage) return;
-    onSelectSegment(viewedIndex);
+  const playViewedSentence = (sentenceIndex) => {
+    player.selectSentence(viewedIndex, sentenceIndex, true);
   };
 
   const openSource = () => {
@@ -692,7 +740,7 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
           onOpenSource={openSource}
         />
         <section
-          className="reading-pane"
+          className={`reading-pane ${tab === "source" ? "is-source-mode" : ""}`}
           ref={readingPaneRef}
         >
           <div className="reading-header">
@@ -736,18 +784,15 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
           {tab === "text" ? (
             <article
               className={`text-content ${viewingPlaybackPage ? "" : "is-previewing"}`}
-              onClick={selectViewedForPlayback}
-              aria-label={viewingPlaybackPage
-                ? `正在播放第 ${viewedIndex + 1} 页`
-                : `切换朗读到第 ${viewedIndex + 1} 页`}
             >
               <h2>{current?.title}</h2>
               <pre className="recognized-layout">
-                <HighlightedText
+                <InteractiveRecognizedText
                   displayText={displayText}
                   speechText={current?.text || ""}
-                  sentenceIndex={player.sentenceIndex}
+                  activeSentenceIndex={player.sentenceIndex}
                   active={viewingPlaybackPage && (player.isPlaying || player.sentenceIndex > 0)}
+                  onSelectSentence={playViewedSentence}
                 />
               </pre>
               {currentHasIllustration && !hasStoredIllustrationNotice ? (

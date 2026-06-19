@@ -1,11 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import packageJson from "./package.json" with { type: "json" };
 
 const base = process.env.VITE_BASE_PATH || "/";
+const appVersion = packageJson.version;
 
 export default defineConfig({
   base,
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   optimizeDeps: {
     include: ["react", "react-dom/client"],
   },
@@ -16,6 +21,23 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      name: "app-version",
+      configureServer(server) {
+        server.middlewares.use(`${base}version.json`, (_request, response) => {
+          response.setHeader("Content-Type", "application/json");
+          response.setHeader("Cache-Control", "no-store");
+          response.end(JSON.stringify({ version: appVersion }));
+        });
+      },
+      generateBundle() {
+        this.emitFile({
+          type: "asset",
+          fileName: "version.json",
+          source: JSON.stringify({ version: appVersion }),
+        });
+      },
+    },
     VitePWA({
       registerType: "prompt",
       includeAssets: [

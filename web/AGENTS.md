@@ -16,15 +16,18 @@ When implementing from a selected generated mock, treat that image as the source
 - Import jobs can be minimized, interrupted after the current page operation, then either saved as partial content or discarded.
 - PDF pages with broken font character maps must be detected as suspicious text and rendered to images for OCR; existing documents expose a full “重新识别” action.
 - Reader separates OCR text from exact page layout: “识别文字” preserves OCR line breaks for copying/reading, while “原始版面” embeds the current source PDF page and follows the active page segment.
+- “原始版面” reserves the reader’s remaining height for its PDF stage; the page canvas scrolls independently in both directions while reader chrome and playback stay fixed.
 - Playback exposes a current-page sentence progress slider; the currently spoken sentence is highlighted in the OCR display using whitespace-tolerant text matching.
 - Playback progress moves continuously and monotonically within the active sentence using the same frame-based time interpolation across supported browsers; browser-specific speech boundary events must not alter the visible progress.
 - On widths below 1000px, voice and rate remain separate, always-visible triggers with their own upward popovers.
 - At every width, reader actions live in a single “…” menu containing “重新识别当前页” and “复制全文”.
 - Reader document titles are never ellipsized: overflowing titles loop horizontally, while reduced-motion users can scroll them manually. The inline purple segment badge is omitted.
-- The page directory is a browse-only surface: selecting an entry previews its text without changing playback; clicking the previewed recognized text switches playback to that page. The directory is collapsible on wide screens and opens as an overlay from a hamburger control on narrow screens.
+- The page directory is a browse-only surface: selecting an entry previews its text without changing playback. Every recognized sentence is individually clickable and starts playback from that sentence, including when previewing another page. Fine-pointer devices show sentence hover feedback; touch devices do not depend on hover. The directory is collapsible on wide screens and opens as an overlay from a hamburger control on narrow screens.
+- The directory marks playback with a compact right-aligned “播放中” badge; it does not use a left-edge playback outline.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.
 - If persistent storage is denied, “申请保护” opens an adaptive install flow: native PWA installation on supporting PC/Android browsers, and Add to Home Screen guidance on iPad/iPhone Safari.
+- PWA update prompts show the current and target version. Starting an update opens a compact loading toast before the new service worker reloads the app.
 - Mobile text scrolling never changes pages. The fixed bottom transport exposes previous/next page and previous/next sentence controls around play.
 - Narrow player controls keep voice and rate separate: voice stays at the left edge, rate stays at the right edge, and play remains centered.
 - Manual re-recognition operates on the active PDF page only and replaces only that page’s recognized text.
