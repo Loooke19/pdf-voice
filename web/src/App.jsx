@@ -638,8 +638,11 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
   const [actionsOpen, setActionsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 760);
   const [viewedIndex, setViewedIndex] = useState(player.currentIndex);
+  const [isEntering, setIsEntering] = useState(true);
   const [isExiting, setIsExiting] = useState(false);
   const actionsRef = useRef(null);
+  const enterFrameRef = useRef(null);
+  const enterReadyFrameRef = useRef(null);
   const exitTimerRef = useRef(null);
   const readingPaneRef = useRef(null);
   const sourceStageRef = useRef(null);
@@ -719,17 +722,26 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
     return () => window.removeEventListener("pointerdown", close);
   }, [actionsOpen]);
 
-  useEffect(() => () => window.clearTimeout(exitTimerRef.current), []);
+  useEffect(() => {
+    enterFrameRef.current = window.requestAnimationFrame(() => {
+      enterReadyFrameRef.current = window.requestAnimationFrame(() => setIsEntering(false));
+    });
+    return () => {
+      window.cancelAnimationFrame(enterFrameRef.current);
+      window.cancelAnimationFrame(enterReadyFrameRef.current);
+      window.clearTimeout(exitTimerRef.current);
+    };
+  }, []);
 
   const returnHome = () => {
-    if (isExiting) return;
+    if (isEntering || isExiting) return;
     setIsExiting(true);
-    exitTimerRef.current = window.setTimeout(onBack, 520);
+    exitTimerRef.current = window.setTimeout(onBack, 900);
   };
 
   return (
     <main
-      className={`reader-shell ${isExiting ? "is-exiting" : ""}`}
+      className={`reader-shell ${isEntering ? "is-entering" : ""} ${isExiting ? "is-exiting" : ""}`}
       onTransitionEnd={(event) => {
         if (isExiting && event.target === event.currentTarget && event.propertyName === "transform") {
           window.clearTimeout(exitTimerRef.current);
@@ -750,7 +762,7 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
           className="reader-home-button"
           onClick={returnHome}
           aria-label="返回首页"
-          disabled={isExiting}
+          disabled={isEntering || isExiting}
         >
           <ChevronDown />
         </button>
