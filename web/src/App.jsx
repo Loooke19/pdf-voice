@@ -445,6 +445,48 @@ function HighlightedText({ displayText, speechText, sentenceIndex, active }) {
   );
 }
 
+function ScrollingTitle({ children }) {
+  const viewportRef = useRef(null);
+  const textRef = useRef(null);
+  const [motion, setMotion] = useState(null);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const text = textRef.current;
+    if (!viewport || !text) return undefined;
+
+    const measure = () => {
+      const overflow = text.scrollWidth > viewport.clientWidth + 1;
+      setMotion(overflow ? {
+        distance: text.scrollWidth + 48,
+        duration: Math.max(10, (text.scrollWidth + 48) / 42),
+      } : null);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(text);
+    return () => observer.disconnect();
+  }, [children]);
+
+  return (
+    <div
+      className={`scrolling-title ${motion ? "is-scrolling" : ""}`}
+      ref={viewportRef}
+      aria-label={children}
+      style={motion ? {
+        "--title-distance": `${motion.distance}px`,
+        "--title-duration": `${motion.duration}s`,
+      } : undefined}
+    >
+      <span className="scrolling-title-track">
+        <span ref={textRef}>{children}</span>
+        {motion ? <span aria-hidden="true">{children}</span> : null}
+      </span>
+    </div>
+  );
+}
+
 function PdfPagePreview({ file, pageNumber, stageRef }) {
   const internalContainerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -598,7 +640,7 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
           <div className="reading-header">
             <div>
               <p className="section-label">正在阅读</p>
-              <h1>{document.title}</h1>
+              <h1><ScrollingTitle>{document.title}</ScrollingTitle></h1>
               <p>
                 {document.partial
                   ? `已导入 ${document.completedPages} / ${document.pageCount} 页`
@@ -607,12 +649,6 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
               </p>
             </div>
             <div className="reading-actions">
-              <button className="secondary-button" onClick={onReprocessPage}>
-                <ArrowClockwise /> 重新识别当前页
-              </button>
-              <button className="secondary-button" onClick={copyText}>
-                {copied ? <Check /> : <Copy />} {copied ? "已复制" : "复制全文"}
-              </button>
               <div className="mobile-reading-actions" ref={actionsRef}>
                 <button
                   className="secondary-button"
@@ -641,10 +677,6 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
           </div>
           {tab === "text" ? (
             <article className="text-content">
-              <div className="current-segment-label">
-                <SpeakerHigh weight="fill" />
-                第 {player.currentIndex + 1} 段 / 共 {document.segments.length} 段
-              </div>
               <h2>{current?.title}</h2>
               <pre className="recognized-layout">
                 <HighlightedText

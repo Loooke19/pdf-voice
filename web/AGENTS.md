@@ -19,7 +19,8 @@ When implementing from a selected generated mock, treat that image as the source
 - Playback exposes a current-page sentence progress slider; the currently spoken sentence is highlighted in the OCR display using whitespace-tolerant text matching.
 - Playback progress moves continuously and monotonically within the active sentence using the same frame-based time interpolation across supported browsers; browser-specific speech boundary events must not alter the visible progress.
 - On widths below 1000px, voice and rate remain separate, always-visible triggers with their own upward popovers.
-- On phone widths, reader actions collapse into a single “…” menu containing “重新识别当前页” and “复制全文”.
+- At every width, reader actions live in a single “…” menu containing “重新识别当前页” and “复制全文”.
+- Reader document titles are never ellipsized: overflowing titles loop horizontally, while reduced-motion users can scroll them manually. The inline purple segment badge is omitted.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - If persistent storage is denied, “申请保护” opens an adaptive install flow: native PWA installation on supporting PC/Android browsers, and Add to Home Screen guidance on iPad/iPhone Safari.
 - Mobile text scrolling never changes pages. The fixed bottom transport exposes previous/next page and previous/next sentence controls around play.

@@ -238,18 +238,20 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 .reading-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; padding: 38px 6vw 28px; }
 .reading-header > div:first-child { min-width: 0; flex: 1 1 auto; }
 .reading-actions { display: flex; flex: 0 0 auto; gap: 9px; }
-.reading-header h1 { width: 100%; max-width: 760px; margin: 0; overflow: hidden; font-family: var(--serif); font-size: 33px; text-overflow: ellipsis; white-space: nowrap; }
+.reading-header h1 { width: 100%; margin: 0; overflow: hidden; font-family: var(--serif); font-size: 33px; white-space: nowrap; }
+.scrolling-title { width: 100%; overflow: hidden; }
+.scrolling-title-track { display: flex; width: max-content; gap: 48px; will-change: transform; }
+.scrolling-title.is-scrolling .scrolling-title-track { animation: title-carousel var(--title-duration) linear infinite; }
 .reading-header p:last-child { margin: 9px 0 0; color: var(--muted); font-size: 13px; }
 .reader-tabs { display: flex; gap: 30px; padding: 0 6vw; border-bottom: 1px solid var(--line); }
 .reader-tabs button { position: relative; padding: 0 2px 15px; border: 0; cursor: pointer; background: transparent; color: var(--muted); font-weight: 600; }
 .reader-tabs button.is-active { color: var(--ink); }
 .reader-tabs button.is-active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--violet); content: ""; }
 .text-content { width: 100%; margin: 0; padding: 48px clamp(32px,5vw,80px) 120px; }
-.text-content h2 { margin: 18px 0 31px; font-family: var(--serif); font-size: 29px; line-height: 1.4; }
+.text-content h2 { margin: 0 0 31px; font-family: var(--serif); font-size: 29px; line-height: 1.4; }
 .recognized-layout { margin: 0; overflow-x: hidden; color: var(--ink); font-family: var(--serif); font-size: 18px; line-height: 1.9; letter-spacing: 0; word-spacing: 0; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
 .spoken-highlight { margin: 0 -.08em; padding: .08em .12em; border-radius: .25em; color: inherit; background: #ddd9ff; box-decoration-break: clone; -webkit-box-decoration-break: clone; transition: background 180ms ease; }
 .illustration-notice { width: max-content; max-width: 100%; margin: 28px 0 0; padding: 10px 14px; border: 1px solid #d7d1ef; border-radius: 12px; color: var(--violet); background: var(--violet-soft); font-size: 14px; font-weight: 600; }
-.current-segment-label { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 999px; color: var(--violet); background: var(--violet-soft); font-size: 12px; font-weight: 700; }
 .source-preview { display: flex; height: calc(100% - 1px); min-height: 520px; flex-direction: column; background: #e6e2da; }
 .source-preview-toolbar { display: flex; min-height: 74px; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--paper-light); text-align: left; }
 .source-preview-toolbar > div { display: flex; flex-direction: column; gap: 4px; }
@@ -295,7 +297,8 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 .settings-popover label { display: grid; min-height: 48px; grid-template-columns: auto 48px minmax(0,1fr); align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--line); border-radius: 12px; }
 .settings-popover label > span { color: var(--muted); font-size: 12px; }
 .settings-popover select { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; font-size: 13px; }
-.mobile-reading-actions { position: relative; display: none; }
+.mobile-reading-actions { position: relative; display: block; }
+.mobile-reading-actions > .secondary-button { display: grid; width: 48px; min-width: 48px; padding: 0; place-items: center; }
 .reading-actions-popover { position: absolute; z-index: 12; top: calc(100% + 10px); right: 0; display: grid; width: 210px; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 15px; background: var(--paper-light); box-shadow: 0 16px 45px rgba(39,35,53,.18); }
 .reading-actions-popover button { display: flex; min-height: 44px; align-items: center; gap: 9px; padding: 0 12px; border: 0; border-radius: 10px; color: var(--ink); background: transparent; font-size: 13px; text-align: left; }
 .reading-actions-popover button:hover { color: var(--violet-dark); background: var(--violet-soft); }
@@ -303,6 +306,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes rise-in { from { opacity: 0; transform: translateY(15px) scale(.98); } }
 @keyframes breathe { 50% { transform: scale(1.06); box-shadow: 0 0 0 18px rgba(97,87,215,.06); } }
+@keyframes title-carousel { to { transform: translateX(calc(-1 * var(--title-distance))); } }
 
 @media (max-width: 1000px) {
   .app-shell { width: min(900px,calc(100% - 40px)); }
@@ -348,9 +352,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
   .reading-header { align-items: flex-start; padding: 27px 24px 22px; }
   .reading-header h1 { font-size: 27px; }
   .reading-actions { gap: 6px; }
-  .reading-actions > .secondary-button { display: none; }
-  .mobile-reading-actions { display: block; }
-  .mobile-reading-actions > .secondary-button { display: grid; width: 45px; min-width: 45px; padding: 0; place-items: center; }
+  .mobile-reading-actions > .secondary-button { width: 45px; min-width: 45px; }
   .reader-tabs { padding: 0 24px; }
   .text-content { width: 100%; padding: 32px 24px 120px; }
   .recognized-layout { font-size: 17px; line-height: 1.85; }
@@ -375,4 +377,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .scrolling-title { overflow-x: auto; scrollbar-width: none; }
+  .scrolling-title::-webkit-scrollbar { display: none; }
+  .scrolling-title.is-scrolling .scrolling-title-track { animation: none !important; }
 }
