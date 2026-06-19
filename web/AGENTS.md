@@ -25,6 +25,8 @@ When implementing from a selected generated mock, treat that image as the source
 - The page directory is a browse-only surface: selecting an entry previews its text without changing playback. Every recognized sentence is individually clickable and starts playback from that sentence, including when previewing another page. Fine-pointer devices show sentence hover feedback; touch devices do not depend on hover. The directory is collapsible on wide screens and opens as an overlay from a hamburger control on narrow screens.
 - The directory marks playback with a compact right-aligned “播放中” badge; it does not use a left-edge playback outline.
 - The reader top bar contains only the directory toggle on the left and a downward-arrow home action on the right; it omits both the centered brand and the labeled back button.
+- Interface icons use Lucide’s restrained single-line style. The reader home action uses `ChevronDown`, and the home brand reuses the installed PWA app icon instead of a separate book glyph.
+- Activating the reader’s downward home action slides the entire reader sheet down to reveal the already-rendered library beneath it, then closes the reader after the transition.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.
 - If persistent storage is denied, “申请保护” opens an adaptive install flow: native PWA installation on supporting PC/Android browsers, and Add to Home Screen guidance on iPad/iPhone Safari.

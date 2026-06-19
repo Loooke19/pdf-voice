@@ -2,18 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import {
   Archive,
   Check,
-  Desktop,
-  DeviceMobile,
-  DownloadSimple,
+  Monitor as Desktop,
+  Smartphone as DeviceMobile,
+  Download as DownloadSimple,
   FolderOpen,
-  HardDrives,
-  ShareNetwork,
+  HardDrive as HardDrives,
+  Share2 as ShareNetwork,
   ShieldCheck,
-  ShieldWarning,
-  Trash,
-  UploadSimple,
+  ShieldAlert as ShieldWarning,
+  Trash2 as Trash,
+  Upload as UploadSimple,
   X,
-} from "@phosphor-icons/react";
+} from "lucide-react";
 import {
   deleteDocuments,
   getStorageStatus,
@@ -147,7 +147,7 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
 
         <div className="storage-status-grid">
           <article className={`storage-status-card ${status?.persisted ? "is-safe" : "is-warning"}`}>
-            {status?.persisted ? <ShieldCheck weight="duotone" /> : <ShieldWarning weight="duotone" />}
+            {status?.persisted ? <ShieldCheck /> : <ShieldWarning />}
             <div>
               <strong>{status?.persisted ? "本地存储已保护" : "本地存储尚未保护"}</strong>
               <span>
@@ -183,7 +183,7 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
           </article>
 
           <article className="storage-status-card">
-            <HardDrives weight="duotone" />
+            <HardDrives />
             <div>
               <strong>{formatBytes(status?.usage)} 已使用</strong>
               <span>
@@ -245,7 +245,7 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
 
         {working && working !== "persist" ? (
           <div className="storage-operation" aria-live="polite">
-            <Archive weight="duotone" />
+            <Archive />
             <div>
               <strong>{progress.detail || "正在处理本地数据"}</strong>
               <span><i style={{ width: `${progress.value}%` }} /></span>
@@ -281,7 +281,7 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
                 checked={selected.has(document.id)}
                 onChange={() => toggleDocument(document.id)}
               />
-              <span className="storage-document-icon"><Archive weight="duotone" /></span>
+              <span className="storage-document-icon"><Archive /></span>
               <span>
                 <strong>{document.title}</strong>
                 <small>
@@ -340,8 +340,8 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
             </button>
             <span className="install-app-icon">
               {installPlatform === "ios" || installPlatform === "android"
-                ? <DeviceMobile weight="duotone" />
-                : <Desktop weight="duotone" />}
+                ? <DeviceMobile />
+                : <Desktop />}
             </span>
             <p className="section-label">INSTALL APP</p>
             <h3 id="install-title">安装“阅声”应用？</h3>

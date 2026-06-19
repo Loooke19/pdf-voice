@@ -1,31 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowDown,
-  ArrowClockwise,
-  BookOpenText,
-  CaretLeft,
-  CaretRight,
+  ChevronDown,
+  RefreshCw as ArrowClockwise,
+  ChevronLeft as CaretLeft,
+  ChevronRight as CaretRight,
   Check,
+  CircleStop as StopCircle,
   Copy,
-  FilePdf,
+  Ellipsis as DotsThree,
+  FileText as FilePdf,
   FolderOpen,
   Gauge,
   Headphones,
-  List,
-  LockKey,
+  Menu as List,
+  LockKeyhole as LockKey,
   Minus,
-  DotsThree,
   Pause,
   Play,
   Plus,
   SkipBack,
   SkipForward,
-  SpeakerHigh,
-  StopCircle,
-  Trash,
-  UploadSimple,
+  Volume2 as SpeakerHigh,
+  Trash2 as Trash,
+  Upload as UploadSimple,
   X,
-} from "@phosphor-icons/react";
+} from "lucide-react";
 import {
   deleteDocument,
   getDocument,
@@ -77,7 +76,12 @@ function replacePageText(documentText, pageNumber, pageText, hasIllustration) {
 function Brand() {
   return (
     <div className="brand" aria-label="阅声首页">
-      <span className="brand-mark"><BookOpenText weight="duotone" /></span>
+      <img
+        className="brand-mark"
+        src={`${import.meta.env.BASE_URL}icons/app-icon.svg`}
+        alt=""
+        aria-hidden="true"
+      />
       <span>阅声</span>
     </div>
   );
@@ -92,6 +96,7 @@ function Home({
   storageStatus,
   activeDocument,
   player,
+  backgrounded = false,
 }) {
   const storagePercent = storageStatus?.quota > 0
     ? Math.min(100, Math.max(storageStatus.usage > 0 ? 1 : 0, Math.round(
@@ -100,7 +105,11 @@ function Home({
     : 0;
 
   return (
-    <main className="app-shell">
+    <main
+      className="app-shell"
+      inert={backgrounded ? true : undefined}
+      aria-hidden={backgrounded ? "true" : undefined}
+    >
       <header className="topbar">
         <Brand />
         <div className="topbar-actions">
@@ -127,7 +136,7 @@ function Home({
             </p>
             <div className="hero-actions">
               <button className="primary-button" onClick={onImport}>
-                <Plus weight="bold" />
+                <Plus />
                 导入 PDF
               </button>
               <span>最大 500MB · 页数不限</span>
@@ -161,7 +170,7 @@ function Home({
 
         {documents.length === 0 ? (
           <button className="empty-library" onClick={onImport}>
-            <span className="empty-icon"><FolderOpen weight="duotone" /></span>
+            <span className="empty-icon"><FolderOpen /></span>
             <strong>这里还没有文档</strong>
             <span>导入第一份 PDF，识别后的文字和朗读进度会保存在这里。</span>
           </button>
@@ -170,12 +179,12 @@ function Home({
             {documents.map((doc, index) => (
               <article className="document-row" key={doc.id}>
                 <button className={`cover cover-${index % 4}`} onClick={() => onOpen(doc.id)}>
-                  <FilePdf weight="duotone" />
+                  <FilePdf />
                   <span>{doc.pageCount} 页</span>
                 </button>
                 <button className="document-main" onClick={() => onOpen(doc.id)}>
                   <span className={`document-status ${doc.partial ? "is-partial" : ""}`}>
-                    {doc.partial ? <StopCircle weight="bold" /> : <Check weight="bold" />}
+                    {doc.partial ? <StopCircle /> : <Check />}
                     {doc.partial ? `部分导入 · ${doc.completedPages} 页` : "已完成"}
                   </span>
                   <h3>{doc.title}</h3>
@@ -190,7 +199,7 @@ function Home({
                     aria-label={`播放 ${doc.title}`}
                     onClick={() => onOpen(doc.id, true)}
                   >
-                    <Play weight="fill" />
+                    <Play fill="currentColor" />
                   </button>
                   <button className="icon-button subtle" aria-label="删除文档" onClick={() => onDelete(doc)}>
                     <Trash />
@@ -204,7 +213,7 @@ function Home({
 
       {activeDocument ? (
         <button className="mini-player" onClick={() => onOpen(activeDocument.id)}>
-          <span className="mini-cover"><Headphones weight="duotone" /></span>
+          <span className="mini-cover"><Headphones /></span>
           <span className="mini-copy">
             <strong>{activeDocument.title}</strong>
             <small>
@@ -212,7 +221,7 @@ function Home({
             </small>
           </span>
           <span className="mini-action">
-            {player.isPlaying ? <Pause weight="fill" /> : <Play weight="fill" />}
+            {player.isPlaying ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
           </span>
         </button>
       ) : null}
@@ -242,7 +251,7 @@ function ImportDialog({
     return (
       <aside className="import-mini" aria-live="polite">
         <button className="import-mini-main" onClick={onRestore}>
-          <span className="mini-processing-icon"><FilePdf weight="duotone" /></span>
+          <span className="mini-processing-icon"><FilePdf /></span>
           <span>
             <strong>{progress.label}</strong>
             <small>{progress.detail}</small>
@@ -291,7 +300,7 @@ function ImportDialog({
 
         {interrupted ? (
           <div className="interrupted-panel" aria-live="polite">
-            <span className="interrupted-icon"><StopCircle weight="duotone" /></span>
+            <span className="interrupted-icon"><StopCircle /></span>
             <h3>导入已中断</h3>
             <p>
               已完成 {interrupted.completedPages} / {interrupted.pageCount || "?"} 页。
@@ -308,7 +317,7 @@ function ImportDialog({
                 onClick={onKeepPartial}
                 disabled={!interrupted.text}
               >
-                <Check weight="bold" /> 导入当前内容
+                <Check /> 导入当前内容
               </button>
               <button className="secondary-button danger-button" onClick={onDiscardPartial}>
                 <X /> 取消导入
@@ -317,7 +326,7 @@ function ImportDialog({
           </div>
         ) : processing ? (
           <div className="processing-panel" aria-live="polite">
-            <div className="processing-orbit"><FilePdf weight="duotone" /></div>
+            <div className="processing-orbit"><FilePdf /></div>
             <h3>{progress.label}</h3>
             <p>{progress.detail}</p>
             <div className="progress-track"><span style={{ width: `${progress.value}%` }} /></div>
@@ -345,14 +354,14 @@ function ImportDialog({
                 acceptFiles(event.dataTransfer.files);
               }}
             >
-              <span className="upload-icon"><UploadSimple weight="bold" /></span>
+              <span className="upload-icon"><UploadSimple /></span>
               <strong>选择本地 PDF</strong>
               <span>或将文件拖放到这里</span>
               <small>最大 500MB · 页数不限</small>
             </button>
             {error ? <p className="error-message">{error}</p> : null}
             <div className="privacy-note">
-              <LockKey weight="fill" />
+              <LockKey />
               <div>
                 <strong>只在当前设备处理</strong>
                 <p>文字提取、扫描页 OCR 和历史保存均在浏览器内完成，不上传源文件。</p>
@@ -377,7 +386,7 @@ function SourcePanel({
   return (
     <aside className={`source-panel ${open ? "is-open" : ""}`} aria-hidden={!open}>
       <div className="source-file">
-        <span className="source-file-icon"><FilePdf weight="duotone" /></span>
+        <span className="source-file-icon"><FilePdf /></span>
         <div>
           <strong>{document.title}</strong>
           <span>{document.pageCount} 页 · {formatBytes(document.size)}</span>
@@ -629,7 +638,9 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
   const [actionsOpen, setActionsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 760);
   const [viewedIndex, setViewedIndex] = useState(player.currentIndex);
+  const [isExiting, setIsExiting] = useState(false);
   const actionsRef = useRef(null);
+  const exitTimerRef = useRef(null);
   const readingPaneRef = useRef(null);
   const sourceStageRef = useRef(null);
   const previousPlayingIndexRef = useRef(player.currentIndex);
@@ -708,8 +719,24 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
     return () => window.removeEventListener("pointerdown", close);
   }, [actionsOpen]);
 
+  useEffect(() => () => window.clearTimeout(exitTimerRef.current), []);
+
+  const returnHome = () => {
+    if (isExiting) return;
+    setIsExiting(true);
+    exitTimerRef.current = window.setTimeout(onBack, 520);
+  };
+
   return (
-    <main className="reader-shell">
+    <main
+      className={`reader-shell ${isExiting ? "is-exiting" : ""}`}
+      onTransitionEnd={(event) => {
+        if (isExiting && event.target === event.currentTarget && event.propertyName === "transform") {
+          window.clearTimeout(exitTimerRef.current);
+          onBack();
+        }
+      }}
+    >
       <header className="reader-topbar">
         <button
           className="sidebar-toggle"
@@ -717,14 +744,15 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
           aria-label={sidebarOpen ? "收起页面目录" : "打开页面目录"}
           aria-expanded={sidebarOpen}
         >
-          <List weight="bold" />
+          <List />
         </button>
         <button
           className="reader-home-button"
-          onClick={onBack}
+          onClick={returnHome}
           aria-label="返回首页"
+          disabled={isExiting}
         >
-          <ArrowDown weight="bold" />
+          <ChevronDown />
         </button>
       </header>
       <div className={`reader-workspace ${sidebarOpen ? "is-sidebar-open" : "is-sidebar-closed"}`}>
@@ -765,7 +793,7 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
                   aria-label="更多阅读操作"
                   aria-expanded={actionsOpen}
                 >
-                  <DotsThree weight="bold" />
+                  <DotsThree />
                 </button>
                 {actionsOpen ? (
                   <div className="reading-actions-popover">
@@ -894,24 +922,24 @@ function PlayerBar({ document, player }) {
         <div className="speech-error" role="alert">{player.speechError}</div>
       ) : null}
       <div className="track-info">
-        <span className="track-icon"><Headphones weight="duotone" /></span>
+        <span className="track-icon"><Headphones /></span>
         <div>
           <strong>{current?.title}</strong>
           <span>第 {player.currentIndex + 1} 段 / 共 {document.segments.length} 段</span>
         </div>
       </div>
       <div className="transport">
-        <button onClick={player.previous} aria-label="上一页" title="上一页"><CaretLeft weight="bold" /></button>
+        <button onClick={player.previous} aria-label="上一页" title="上一页"><CaretLeft /></button>
         <button onClick={() => player.skip(-1)} aria-label="上一句" title="上一句"><SkipBack /></button>
         <button
           className="main-play"
           onClick={player.toggle}
           aria-label={player.isPlaying ? "暂停" : "播放"}
         >
-          {player.isPlaying ? <Pause weight="fill" /> : <Play weight="fill" />}
+          {player.isPlaying ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
         </button>
         <button onClick={() => player.skip(1)} aria-label="下一句" title="下一句"><SkipForward /></button>
-        <button onClick={player.next} aria-label="下一页" title="下一页"><CaretRight weight="bold" /></button>
+        <button onClick={player.next} aria-label="下一页" title="下一页"><CaretRight /></button>
       </div>
       <div className="player-settings">
         {rateField}
@@ -1244,21 +1272,21 @@ export function App() {
 
   return (
     <>
-      {screen === "home" ? (
-        <Home
-          documents={documents}
-          onImport={openImport}
-          onOpen={openDocument}
-          onDelete={removeDocument}
-          onOpenStorage={() => {
-            refreshStorageStatus().catch(() => {});
-            setStorageOpen(true);
-          }}
-          storageStatus={storageStatus}
-          activeDocument={activeDocument}
-          player={player}
-        />
-      ) : selected ? (
+      <Home
+        documents={documents}
+        onImport={openImport}
+        onOpen={openDocument}
+        onDelete={removeDocument}
+        onOpenStorage={() => {
+          refreshStorageStatus().catch(() => {});
+          setStorageOpen(true);
+        }}
+        storageStatus={storageStatus}
+        activeDocument={activeDocument}
+        player={player}
+        backgrounded={screen === "reader"}
+      />
+      {screen === "reader" && selected ? (
         <Reader
           document={selected}
           onBack={() => setScreen("home")}
