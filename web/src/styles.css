@@ -82,10 +82,14 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 .document-main p { max-width: 720px; margin: 0; overflow: hidden; color: var(--muted); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .document-status { display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-size: 12px; font-weight: 700; }
 .document-status.is-partial { color: #a16428; }
+.document-status.is-processing svg { animation: pwa-spin 1.8s linear infinite; }
 .document-meta { display: block; margin-top: 14px; color: #94909b; font-size: 12px; }
 .row-actions { display: flex; align-items: center; gap: 10px; }
 .round-play, .icon-button, .transport button { display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer; }
 .round-play { width: 50px; height: 50px; color: white; background: var(--ink); }
+.round-play.resume-processing { color: var(--violet); background: var(--violet-soft); }
+.round-play.resume-processing:not(:disabled):hover svg { transform: rotate(35deg); }
+.round-play.resume-processing svg { transition: transform 180ms ease; }
 .icon-button { width: 42px; height: 42px; background: #eeeae2; }
 .icon-button.subtle { color: #8d8993; background: transparent; }
 .icon-button:hover, .transport button:hover { background: var(--violet-soft); color: var(--violet); }

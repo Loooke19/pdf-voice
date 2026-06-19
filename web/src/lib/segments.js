@@ -5,6 +5,7 @@ import {
 
 const HEADING_PATTERN = /^(第[一二三四五六七八九十百零\d]+[章节篇部卷]|chapter\s+\d+|序言|前言|目录|结语|附录)/i;
 const UNRELIABLE_PAGE_MESSAGE = "本页以图片为主，未识别到可靠文字。请切换到“原始版面”查看。";
+export const PENDING_PAGE_MESSAGE = "暂未完成识别。";
 
 function prepareRecognizedText(text) {
   const normalized = normalizeRecognizedText(text);
@@ -62,8 +63,17 @@ export function makeSegments(rawText) {
     return pageParts.map((page, index) => {
       const pageMatch = page.match(/^第 (\d+) 页\s*\n*/);
       const pageNumber = pageMatch?.[1] || index + 1;
+      const pageBody = page.replace(/^第 \d+ 页\s*\n*/, "").trim();
+      if (pageBody === PENDING_PAGE_MESSAGE) {
+        return {
+          title: `第 ${pageNumber} 页`,
+          text: "",
+          displayText: PENDING_PAGE_MESSAGE,
+          pending: true,
+        };
+      }
       const displayText = prepareRecognizedText(
-        page.replace(/^第 \d+ 页\s*\n*/, ""),
+        pageBody,
       );
       return {
         title: `第 ${pageNumber} 页`,
@@ -123,6 +133,7 @@ export function makeDocumentPreview(segments = []) {
     const text = segment?.text?.trim() || "";
     return text
       && text !== UNRELIABLE_PAGE_MESSAGE
+      && segment?.displayText !== PENDING_PAGE_MESSAGE
       && text !== "没有识别到可朗读的文字。";
   });
   if (!candidate) return "暂无可靠文字，可打开原始版面查看。";

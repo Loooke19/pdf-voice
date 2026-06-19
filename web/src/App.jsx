@@ -34,7 +34,12 @@ import {
   saveDocument,
   updateDocumentMetadata,
 } from "./lib/db";
-import { makeDocumentPreview, makeSegments, makeSentences } from "./lib/segments";
+import {
+  makeDocumentPreview,
+  makeSegments,
+  makeSentences,
+  PENDING_PAGE_MESSAGE,
+} from "./lib/segments";
 import { normalizeRecognizedText } from "./lib/textQuality";
 import { useSpeechPlayer } from "./lib/useSpeechPlayer";
 import { StorageDialog } from "./components/StorageDialog";
@@ -91,12 +96,15 @@ function Home({
   documents,
   onImport,
   onOpen,
+  onResume,
   onDelete,
   onOpenStorage,
   storageStatus,
   activeDocument,
   player,
   backgrounded = false,
+  processing,
+  processingDocumentId,
 }) {
   const storagePercent = storageStatus?.quota > 0
     ? Math.min(100, Math.max(storageStatus.usage > 0 ? 1 : 0, Math.round(
@@ -183,9 +191,15 @@ function Home({
                   <span>{doc.pageCount} 页</span>
                 </button>
                 <button className="document-main" onClick={() => onOpen(doc.id)}>
-                  <span className={`document-status ${doc.partial ? "is-partial" : ""}`}>
-                    {doc.partial ? <StopCircle /> : <Check />}
-                    {doc.partial ? `部分导入 · ${doc.completedPages} 页` : "已完成"}
+                  <span className={`document-status ${
+                    doc.processingState && doc.processingState !== "complete" ? "is-partial" : ""
+                  } ${processingDocumentId === doc.id ? "is-processing" : ""}`}>
+                    {!doc.processingState || doc.processingState === "complete" ? <Check /> : <ArrowClockwise />}
+                    {!doc.processingState || doc.processingState === "complete"
+                      ? "已完成"
+                      : processingDocumentId === doc.id
+                        ? `识别中 · ${doc.completedPages || 0} / ${doc.pageCount || "?"} 页`
+                        : `待继续 · ${doc.completedPages || 0} / ${doc.pageCount || "?"} 页`}
                   </span>
                   <h3>{doc.title}</h3>
                   <p>{doc.preview || "已识别文字，等待朗读。"}</p>
@@ -194,13 +208,24 @@ function Home({
                   </span>
                 </button>
                 <div className="row-actions">
-                  <button
-                    className="round-play"
-                    aria-label={`播放 ${doc.title}`}
-                    onClick={() => onOpen(doc.id, true)}
-                  >
-                    <Play fill="currentColor" />
-                  </button>
+                  {!doc.processingState || doc.processingState === "complete" ? (
+                    <button
+                      className="round-play"
+                      aria-label={`播放 ${doc.title}`}
+                      onClick={() => onOpen(doc.id, true)}
+                    >
+                      <Play fill="currentColor" />
+                    </button>
+                  ) : (
+                    <button
+                      className="round-play resume-processing"
+                      aria-label={`继续识别 ${doc.title}`}
+                      disabled={processing || processingDocumentId === doc.id}
+                      onClick={() => onResume(doc.id)}
+                    >
+                      <ArrowClockwise />
+                    </button>
+                  )}
                   <button className="icon-button subtle" aria-label="删除文档" onClick={() => onDelete(doc)}>
                     <Trash />
                   </button>
@@ -211,7 +236,8 @@ function Home({
         )}
       </section>
 
-      {activeDocument ? (
+      {activeDocument
+        && (!activeDocument.processingState || activeDocument.processingState === "complete") ? (
         <button className="mini-player" onClick={() => onOpen(activeDocument.id)}>
           <span className="mini-cover"><Headphones /></span>
           <span className="mini-copy">
@@ -631,7 +657,15 @@ function PdfPagePreview({ file, pageNumber, stageRef }) {
   );
 }
 
-function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) {
+function Reader({
+  document,
+  onBack,
+  onReprocessPage,
+  onResume,
+  player,
+  onSelectSegment,
+  processingDocumentId,
+}) {
   const [tab, setTab] = useState("text");
   const [copied, setCopied] = useState(false);
   const [currentHasIllustration, setCurrentHasIllustration] = useState(false);
@@ -791,8 +825,8 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
               <p className="section-label">正在阅读</p>
               <h1><ScrollingTitle>{document.title}</ScrollingTitle></h1>
               <p>
-                {document.partial
-                  ? `已导入 ${document.completedPages} / ${document.pageCount} 页`
+                {document.processingState && document.processingState !== "complete"
+                  ? `${processingDocumentId === document.id ? "正在识别" : "识别待继续"} · ${document.completedPages || 0} / ${document.pageCount || "?"} 页`
                   : `${document.pageCount} 页`}
                 {" · "}{document.ocrPages || 0} 页使用本地 OCR · 自动保存在此设备
               </p>
@@ -809,7 +843,21 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
                 </button>
                 {actionsOpen ? (
                   <div className="reading-actions-popover">
-                    <button onClick={() => { setActionsOpen(false); onReprocessPage(viewedIndex); }}>
+                    {document.processingState && document.processingState !== "complete" ? (
+                      <button
+                        disabled={processingDocumentId === document.id}
+                        onClick={() => {
+                          setActionsOpen(false);
+                          onResume(document.id);
+                        }}
+                      >
+                        <ArrowClockwise /> {processingDocumentId === document.id ? "正在识别" : "继续识别"}
+                      </button>
+                    ) : null}
+                    <button
+                      disabled={Boolean(processingDocumentId)}
+                      onClick={() => { setActionsOpen(false); onReprocessPage(viewedIndex); }}
+                    >
                       <ArrowClockwise /> 重新识别当前页
                     </button>
                     <button onClick={() => { setActionsOpen(false); copyText(); }}>
@@ -1000,6 +1048,7 @@ export function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [importMinimized, setImportMinimized] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [processingDocumentId, setProcessingDocumentId] = useState(null);
   const [storageOpen, setStorageOpen] = useState(false);
   const [interrupted, setInterrupted] = useState(null);
   const [error, setError] = useState("");
@@ -1130,6 +1179,7 @@ export function App() {
       pageCount: result.pageCount,
       completedPages: result.completedPages || result.pageCount,
       partial,
+      processingState: partial ? "paused" : "complete",
       ocrPages: result.ocrPages,
       illustrationPages: result.illustrationPages || [],
       text: result.text,
@@ -1150,6 +1200,119 @@ export function App() {
     setScreen("reader");
   };
 
+  const makeProcessingDocument = (file, result, existing, processingState = "processing") => {
+    const text = result.text || `第 1 页\n\n${PENDING_PAGE_MESSAGE}`;
+    const segments = makeSegments(text);
+    return {
+      ...existing,
+      id: existing?.id || crypto.randomUUID(),
+      title: file.name.replace(/\.pdf$/i, ""),
+      fileName: file.name,
+      file,
+      size: file.size,
+      pageCount: result.pageCount || existing?.pageCount || 0,
+      completedPages: result.completedPages ?? existing?.completedPages ?? 0,
+      partial: processingState !== "complete",
+      processingState,
+      processingError: processingState === "error" ? existing?.processingError : "",
+      ocrPages: result.ocrPages ?? existing?.ocrPages ?? 0,
+      illustrationPages: result.illustrationPages || existing?.illustrationPages || [],
+      text,
+      preview: processingState === "complete"
+        ? makeDocumentPreview(segments)
+        : `正在识别 · 已完成 ${result.completedPages ?? existing?.completedPages ?? 0} 页`,
+      segments,
+      lastSegment: Math.min(existing?.lastSegment || 0, Math.max(0, segments.length - 1)),
+      createdAt: existing?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    };
+  };
+
+  const updateProcessingDocument = async (document) => {
+    await saveDocument(document);
+    setDocuments((items) => {
+      const summary = {
+        ...document,
+        file: undefined,
+        text: undefined,
+        segments: undefined,
+        segmentCount: document.segments.length,
+      };
+      const exists = items.some((item) => item.id === document.id);
+      return exists
+        ? items.map((item) => (item.id === document.id ? { ...item, ...summary } : item))
+        : [summary, ...items];
+    });
+    setSelected((current) => (current?.id === document.id ? document : current));
+  };
+
+  const processStoredDocument = async (document, options = {}) => {
+    const controller = new AbortController();
+    importControllerRef.current = controller;
+    setProcessingDocumentId(document.id);
+    setInterrupted(null);
+    setImportMinimized(true);
+    setImportOpen(false);
+    setProgress({ value: 0, label: "正在读取文件", detail: document.fileName });
+    setProcessing(true);
+    try {
+      const { processPdf } = await import("./lib/pdf");
+      const result = await processPdf(document.file, {
+        signal: controller.signal,
+        forceOcr: Boolean(options.forceOcr),
+        initialText: options.forceOcr ? "" : document.text,
+        initialOcrPages: options.forceOcr ? 0 : document.ocrPages,
+        initialIllustrationPages: options.forceOcr ? [] : document.illustrationPages,
+        onProgress: (next) => setProgress((current) => ({
+          ...next,
+          value: Math.max(current.value, next.value),
+        })),
+        onCheckpoint: async (checkpoint) => {
+          const next = makeProcessingDocument(
+            document.file,
+            checkpoint,
+            document,
+            checkpoint.interrupted ? "paused" : "processing",
+          );
+          Object.assign(document, next);
+          await updateProcessingDocument(next);
+        },
+      });
+      if (result.interrupted) {
+        await updateProcessingDocument(makeProcessingDocument(
+          document.file,
+          result,
+          document,
+          "paused",
+        ));
+        return;
+      }
+      const completed = makeProcessingDocument(document.file, result, document, "complete");
+      await updateProcessingDocument(completed);
+      await refreshDocuments();
+      await refreshStorageStatus();
+    } catch (reason) {
+      if (!controller.signal.aborted) {
+        const message = reason instanceof Error ? reason.message : "处理 PDF 时发生错误。";
+        const failed = {
+          ...document,
+          partial: true,
+          processingState: "error",
+          processingError: message,
+          preview: `识别暂停 · ${message}`,
+          updatedAt: Date.now(),
+        };
+        await updateProcessingDocument(failed);
+        setError(message);
+      }
+    } finally {
+      if (importControllerRef.current === controller) importControllerRef.current = null;
+      setProcessing(false);
+      setProcessingDocumentId(null);
+      setImportMinimized(false);
+    }
+  };
+
   const handleFile = async (file, options = {}) => {
     setError("");
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
@@ -1160,39 +1323,36 @@ export function App() {
       setError("文件超过 500MB，请选择更小的 PDF。");
       return;
     }
-
-    const controller = new AbortController();
-    importControllerRef.current = controller;
-    setInterrupted(null);
-    setImportMinimized(false);
-    setImportOpen(true);
-    setProgress({ value: 0, label: "正在读取文件", detail: file.name });
-    setProcessing(true);
-    try {
-      const { processPdf } = await import("./lib/pdf");
-      const result = await processPdf(file, {
-        signal: controller.signal,
-        forceOcr: Boolean(options.forceOcr),
-        onProgress: (next) => setProgress((current) => ({
-          ...next,
-          value: Math.max(current.value, next.value),
-        })),
-      });
-      if (result.interrupted) {
-        setInterrupted({ ...result, file, options });
-        setImportOpen(true);
-        setImportMinimized(false);
-        return;
-      }
-      await commitDocument(file, result, options);
-    } catch (reason) {
-      if (!controller.signal.aborted) {
-        setError(reason instanceof Error ? reason.message : "处理 PDF 时发生错误。");
-      }
-    } finally {
-      if (importControllerRef.current === controller) importControllerRef.current = null;
-      setProcessing(false);
+    if (processing) {
+      setError("当前已有一份文档正在识别，请稍后再导入。");
+      return;
     }
+
+    setProcessing(true);
+    setProgress({ value: 1, label: "正在保存源文件", detail: file.name });
+    try {
+      const draft = makeProcessingDocument(file, {
+        text: `第 1 页\n\n${PENDING_PAGE_MESSAGE}`,
+        pageCount: 0,
+        completedPages: 0,
+        ocrPages: 0,
+        illustrationPages: [],
+      }, null, "processing");
+      await updateProcessingDocument(draft);
+      await requestPersistentStorage().catch(() => false);
+      await refreshDocuments();
+      void processStoredDocument(draft, options);
+    } catch (reason) {
+      setProcessing(false);
+      setError(reason instanceof Error ? reason.message : "保存 PDF 时发生错误。");
+    }
+  };
+
+  const resumeDocument = async (id) => {
+    if (processing) return;
+    const document = await getDocument(id);
+    if (!document?.file || document.processingState === "complete") return;
+    void processStoredDocument(document);
   };
 
   const reprocessCurrentPage = async (pageIndex = player.currentIndex) => {
@@ -1274,6 +1434,10 @@ export function App() {
 
   const removeDocument = async (document) => {
     if (!window.confirm(`确定删除“${document.title}”吗？源 PDF 和识别文字都会从当前设备移除。`)) return;
+    if (processingDocumentId === document.id) {
+      importControllerRef.current?.abort();
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    }
     await deleteDocument(document.id);
     await refreshDocuments();
     if (selected?.id === document.id) {
@@ -1288,6 +1452,7 @@ export function App() {
         documents={documents}
         onImport={openImport}
         onOpen={openDocument}
+        onResume={resumeDocument}
         onDelete={removeDocument}
         onOpenStorage={() => {
           refreshStorageStatus().catch(() => {});
@@ -1297,14 +1462,18 @@ export function App() {
         activeDocument={activeDocument}
         player={player}
         backgrounded={screen === "reader"}
+        processing={processing}
+        processingDocumentId={processingDocumentId}
       />
       {screen === "reader" && selected ? (
         <Reader
           document={selected}
           onBack={() => setScreen("home")}
           onReprocessPage={reprocessCurrentPage}
+          onResume={resumeDocument}
           player={player}
           onSelectSegment={(index) => player.select(index, player.isPlaying)}
+          processingDocumentId={processingDocumentId}
         />
       ) : null}
       <ImportDialog

@@ -62,6 +62,11 @@ export function useSpeechPlayer(segments, onProgress) {
   const speakFrom = useCallback((segmentIndex, startSentence = 0) => {
     const segment = stateRef.current.segments[segmentIndex];
     if (!segment) return false;
+    if (!segment.text?.trim()) {
+      setIsPlaying(false);
+      setSpeechError("当前页暂未完成识别。");
+      return false;
+    }
     if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
       setIsPlaying(false);
       setSpeechError("当前浏览器不支持系统语音，请使用 Chrome、Safari 或 Edge 打开。");

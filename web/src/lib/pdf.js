@@ -5,6 +5,7 @@ import {
   normalizeRecognizedText,
 } from "./textQuality";
 import { pageHasIllustration } from "./pdfVisuals";
+import { PENDING_PAGE_MESSAGE } from "./segments";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -111,7 +112,34 @@ function normalizeTableOfContents(text) {
     .trim();
 }
 
-export async function processPdf(file, { onProgress, signal, forceOcr = false }) {
+function restorePageTexts(text = "", pageCount = 0) {
+  const pages = Array(pageCount).fill("");
+  text
+    .replace(/\r/g, "")
+    .split(/(?=^第 \d+ 页\s*$)/gm)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .forEach((page) => {
+      const match = page.match(/^第 (\d+) 页\s*\n*/);
+      if (!match) return;
+      const pageNumber = Number(match[1]);
+      const pageText = page.replace(/^第 \d+ 页\s*\n*/, "").trim();
+      if (pageNumber >= 1 && pageNumber <= pageCount && pageText !== PENDING_PAGE_MESSAGE) {
+        pages[pageNumber - 1] = pageText.replace(`\n\n${ILLUSTRATION_NOTICE}`, "").trim();
+      }
+    });
+  return pages;
+}
+
+export async function processPdf(file, {
+  onProgress,
+  onCheckpoint,
+  signal,
+  forceOcr = false,
+  initialText = "",
+  initialOcrPages = 0,
+  initialIllustrationPages = [],
+}) {
   let lastProgress = 0;
   const report = (next) => {
     const value = Math.max(lastProgress, Math.min(100, next.value));
@@ -121,16 +149,15 @@ export async function processPdf(file, { onProgress, signal, forceOcr = false })
   const isInterrupted = () => Boolean(signal?.aborted);
   const makeResult = (pages, totalPageCount, ocrPages, illustrationPages, interrupted = false) => {
     const completedPages = pages.filter((pageText) => pageText?.replace(/\s/g, "").length).length;
-    const text = pages
+    const text = Array.from({ length: totalPageCount }, (_, index) => pages[index] || "")
       .map((pageText, index) => {
-        if (!pageText) return "";
+        if (!pageText) return `第 ${index + 1} 页\n\n${PENDING_PAGE_MESSAGE}`;
         const notice = illustrationPages.has(index + 1)
           && !isUnreliableRecognizedText(pageText)
           ? `\n\n${ILLUSTRATION_NOTICE}`
           : "";
         return `第 ${index + 1} 页\n\n${pageText}${notice}`;
       })
-      .filter(Boolean)
       .join("\n\n")
       .replace(/\n{4,}/g, "\n\n")
       .trim();
@@ -143,16 +170,50 @@ export async function processPdf(file, { onProgress, signal, forceOcr = false })
       interrupted,
     };
   };
+  const checkpoint = async (pages, totalPageCount, ocrPages, illustrationPages, interrupted = false) => {
+    const result = makeResult(pages, totalPageCount, ocrPages, illustrationPages, interrupted);
+    await onCheckpoint?.(result);
+    return result;
+  };
 
   report({ value: 2, label: "正在打开 PDF", detail: file.name });
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const illustrationPages = new Set();
-  if (isInterrupted()) return makeResult([], 0, 0, illustrationPages, true);
-  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-  const pages = Array(pdf.numPages).fill("");
+  const objectUrl = URL.createObjectURL(file);
+  const illustrationPages = new Set(initialIllustrationPages);
+  let pdf;
+  if (isInterrupted()) return makeResult([], 0, initialOcrPages, illustrationPages, true);
+  try {
+    pdf = await pdfjsLib.getDocument({ url: objectUrl }).promise;
+  } catch (error) {
+    URL.revokeObjectURL(objectUrl);
+    throw error;
+  }
+  let cleanedUp = false;
+  const cleanup = async () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    await pdf.destroy();
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  try {
+    const pages = forceOcr
+    ? Array(pdf.numPages).fill("")
+    : restorePageTexts(initialText, pdf.numPages);
   const pagesNeedingOcr = [];
+  await checkpoint(pages, pdf.numPages, initialOcrPages, illustrationPages);
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    if (isInterrupted()) return makeResult(pages, pdf.numPages, 0, illustrationPages, true);
+    if (isInterrupted()) {
+      const interrupted = await checkpoint(
+        pages,
+        pdf.numPages,
+        initialOcrPages,
+        illustrationPages,
+        true,
+      );
+      await cleanup();
+      return interrupted;
+    }
+    if (!forceOcr && pages[pageNumber - 1]) continue;
     const page = await pdf.getPage(pageNumber);
     const text = await extractPageText(page);
     if (await pageHasIllustration(page, text)) illustrationPages.add(pageNumber);
@@ -160,6 +221,8 @@ export async function processPdf(file, { onProgress, signal, forceOcr = false })
     if (forceOcr || isSuspiciousText(text)) {
       pagesNeedingOcr.push(pageNumber);
       pages[pageNumber - 1] = "";
+    } else {
+      await checkpoint(pages, pdf.numPages, initialOcrPages, illustrationPages);
     }
     report({
       value: 4 + (pageNumber / pdf.numPages) * 56,
@@ -178,7 +241,17 @@ export async function processPdf(file, { onProgress, signal, forceOcr = false })
     });
     const { createWorker } = await import("tesseract.js");
     for (let index = 0; index < pagesNeedingOcr.length; index += 1) {
-      if (isInterrupted()) return makeResult(pages, pdf.numPages, index, illustrationPages, true);
+      if (isInterrupted()) {
+        const interrupted = await checkpoint(
+          pages,
+          pdf.numPages,
+          initialOcrPages + index,
+          illustrationPages,
+          true,
+        );
+        await cleanup();
+        return interrupted;
+      }
       let worker;
       let terminated = false;
       const terminate = async () => {
@@ -202,7 +275,17 @@ export async function processPdf(file, { onProgress, signal, forceOcr = false })
           },
         ));
         await worker.setParameters({ preserve_interword_spaces: "1" });
-        if (isInterrupted()) return makeResult(pages, pdf.numPages, index, illustrationPages, true);
+        if (isInterrupted()) {
+          const interrupted = await checkpoint(
+            pages,
+            pdf.numPages,
+            initialOcrPages + index,
+            illustrationPages,
+            true,
+          );
+          await cleanup();
+          return interrupted;
+        }
         const pageNumber = pagesNeedingOcr[index];
         const page = await pdf.getPage(pageNumber);
         const canvas = await renderPage(page);
@@ -214,13 +297,29 @@ export async function processPdf(file, { onProgress, signal, forceOcr = false })
         )
           ? "本页以图片为主，未识别到可靠文字。请切换到“原始版面”查看。"
           : recognizedText;
+        await checkpoint(
+          pages,
+          pdf.numPages,
+          initialOcrPages + index + 1,
+          illustrationPages,
+        );
         report({
           value: 64 + ((index + 1) / pagesNeedingOcr.length) * 31,
           label: "正在识别扫描页",
           detail: `第 ${pageNumber} 页 · ${index + 1} / ${pagesNeedingOcr.length}`,
         });
       } catch (error) {
-        if (isInterrupted()) return makeResult(pages, pdf.numPages, index, illustrationPages, true);
+        if (isInterrupted()) {
+          const interrupted = await checkpoint(
+            pages,
+            pdf.numPages,
+            initialOcrPages + index,
+            illustrationPages,
+            true,
+          );
+          await cleanup();
+          return interrupted;
+        }
         throw error;
       } finally {
         signal?.removeEventListener("abort", abortWorker);
@@ -233,16 +332,21 @@ export async function processPdf(file, { onProgress, signal, forceOcr = false })
   const result = makeResult(
     pages,
     pdf.numPages,
-    pagesNeedingOcr.length,
+    initialOcrPages + pagesNeedingOcr.length,
     illustrationPages,
   );
 
-  if (result.text.replace(/\s/g, "").length < 5) {
+  if (result.completedPages === 0) {
     throw new Error("没有识别到可读文字。请确认 PDF 未加密，或尝试更清晰的扫描文件。");
   }
 
   report({ value: 100, label: "转换完成", detail: "正在保存到当前设备" });
+  await cleanup();
   return result;
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
 }
 
 export async function recognizePdfPage(file, pageNumber, { onProgress, signal }) {
