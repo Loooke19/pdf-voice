@@ -10,7 +10,6 @@ import {
   FilePdf,
   FolderOpen,
   Gauge,
-  HardDrives,
   Headphones,
   LockKey,
   Minus,
@@ -29,6 +28,7 @@ import {
 import {
   deleteDocument,
   getDocument,
+  getStorageStatus,
   listDocuments,
   requestPersistentStorage,
   saveDocument,
@@ -82,33 +82,35 @@ function Brand() {
   );
 }
 
-function PrivacyBadge() {
-  return (
-    <div className="privacy-badge">
-      <LockKey weight="fill" />
-      文件仅保存在此设备
-    </div>
-  );
-}
-
 function Home({
   documents,
   onImport,
   onOpen,
   onDelete,
   onOpenStorage,
+  storageStatus,
   activeDocument,
   player,
 }) {
+  const storagePercent = storageStatus?.quota > 0
+    ? Math.min(100, Math.max(storageStatus.usage > 0 ? 1 : 0, Math.round(
+      (storageStatus.usage / storageStatus.quota) * 100,
+    )))
+    : 0;
+
   return (
     <main className="app-shell">
       <header className="topbar">
         <Brand />
         <div className="topbar-actions">
-          <PrivacyBadge />
-          <button className="storage-button" onClick={onOpenStorage}>
-            <HardDrives weight="duotone" />
-            存储与备份
+          <button
+            className="storage-meter"
+            onClick={onOpenStorage}
+            aria-label={`存储已使用 ${storagePercent}%，打开存储与备份`}
+            title={`存储已使用 ${storagePercent}%`}
+            style={{ "--storage-percent": `${storagePercent * 3.6}deg` }}
+          >
+            <span>{storagePercent}%</span>
           </button>
         </div>
       </header>
@@ -528,6 +530,7 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
   const sourceStageRef = useRef(null);
   const wheelDistanceRef = useRef(0);
   const touchRef = useRef(null);
+  const touchBoundaryRef = useRef(null);
   const switchCooldownRef = useRef(0);
   const current = document.segments[player.currentIndex] || document.segments[0];
   const displayText = current?.displayText || current?.text || "";
@@ -602,21 +605,55 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
     const container = activeScrollContainer();
     const touch = event.touches[0];
     if (!container || !touch) return;
+    const atTop = container.scrollTop <= 1;
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
     touchRef.current = {
       y: touch.clientY,
-      atTop: container.scrollTop <= 1,
-      atBottom: container.scrollTop + container.clientHeight >= container.scrollHeight - 1,
+      atTop,
+      atBottom,
     };
+
+    if (!atTop && !atBottom) touchBoundaryRef.current = null;
   };
 
   const handleTouchEnd = (event) => {
+    const container = activeScrollContainer();
     const start = touchRef.current;
     const touch = event.changedTouches[0];
     touchRef.current = null;
-    if (!start || !touch) return;
+    if (!container || !start || !touch) return;
     const distance = touch.clientY - start.y;
-    if (start.atTop && distance > 72) switchPage(-1);
-    if (start.atBottom && distance < -72) switchPage(1);
+    const direction = distance < 0 ? 1 : -1;
+    if (Math.abs(distance) < 72) return;
+
+    const atTop = container.scrollTop <= 1;
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
+    const boundary = direction > 0 ? "bottom" : "top";
+    const startedAtBoundary = direction > 0 ? start.atBottom : start.atTop;
+    const endedAtBoundary = direction > 0 ? atBottom : atTop;
+
+    if (!endedAtBoundary) {
+      touchBoundaryRef.current = null;
+      return;
+    }
+
+    if (startedAtBoundary && touchBoundaryRef.current === boundary) {
+      touchBoundaryRef.current = null;
+      switchPage(direction);
+      return;
+    }
+
+    touchBoundaryRef.current = boundary;
+  };
+
+  const handleBoundaryScroll = () => {
+    const container = activeScrollContainer();
+    if (!container) return;
+    const atTop = container.scrollTop <= 1;
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
+    if (atBottom) touchBoundaryRef.current = "bottom";
+    else if (atTop) touchBoundaryRef.current = "top";
+    else touchBoundaryRef.current = null;
   };
 
   const openSource = () => {
@@ -645,7 +682,6 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
       <header className="reader-topbar">
         <button className="back-button" onClick={onBack}><ArrowLeft /> 返回文档库</button>
         <Brand />
-        <PrivacyBadge />
       </header>
       <div className="reader-workspace">
         <SourcePanel
@@ -657,6 +693,7 @@ function Reader({ document, onBack, onReprocessPage, player, onSelectSegment }) 
         <section
           className="reading-pane"
           ref={readingPaneRef}
+          onScroll={handleBoundaryScroll}
           onWheel={handleBoundaryWheel}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
@@ -873,6 +910,7 @@ function PlayerBar({ document, player }) {
 
 export function App() {
   const [documents, setDocuments] = useState([]);
+  const [storageStatus, setStorageStatus] = useState(null);
   const [screen, setScreen] = useState("home");
   const [selected, setSelected] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -888,6 +926,12 @@ export function App() {
     const items = await listDocuments();
     setDocuments(items);
     return items;
+  }, []);
+
+  const refreshStorageStatus = useCallback(async () => {
+    const status = await getStorageStatus();
+    setStorageStatus(status);
+    return status;
   }, []);
 
   const player = useSpeechPlayer(selected?.segments || [], async (index) => {
@@ -906,6 +950,7 @@ export function App() {
   });
 
   useEffect(() => {
+    refreshStorageStatus().catch(() => setStorageStatus(null));
     refreshDocuments().then(async (items) => {
       if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo") && items.length === 0) {
         const demoText = `第一章 在风起之前
@@ -936,12 +981,21 @@ export function App() {
         await refreshDocuments();
       }
     }).catch(() => setError("无法读取本地文档库。"));
-  }, [refreshDocuments]);
+  }, [refreshDocuments, refreshStorageStatus]);
 
   const activeDocument = useMemo(
     () => selected || documents.find((item) => item.lastSegment > 0),
     [selected, documents],
   );
+
+  const storedBytes = useMemo(
+    () => documents.reduce((total, item) => total + (item.storageBytes || item.size || 0), 0),
+    [documents],
+  );
+
+  useEffect(() => {
+    refreshStorageStatus().catch(() => {});
+  }, [refreshStorageStatus, storedBytes]);
 
   const openDocument = async (id, autoplay = false) => {
     let document = await getDocument(id);
@@ -1151,7 +1205,11 @@ export function App() {
           onImport={openImport}
           onOpen={openDocument}
           onDelete={removeDocument}
-          onOpenStorage={() => setStorageOpen(true)}
+          onOpenStorage={() => {
+            refreshStorageStatus().catch(() => {});
+            setStorageOpen(true);
+          }}
+          storageStatus={storageStatus}
           activeDocument={activeDocument}
           player={player}
         />
@@ -1184,9 +1242,14 @@ export function App() {
       />
       <StorageDialog
         open={storageOpen}
-        onClose={() => setStorageOpen(false)}
+        onClose={() => {
+          setStorageOpen(false);
+          refreshStorageStatus().catch(() => {});
+        }}
         documents={documents}
-        onChanged={refreshDocuments}
+        onChanged={async () => {
+          await Promise.all([refreshDocuments(), refreshStorageStatus()]);
+        }}
       />
       <PwaStatus />
     </>
