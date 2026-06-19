@@ -115,35 +115,37 @@ function Home({
         </div>
       </header>
 
-      <section className="hero">
-        <div className="hero-copy">
-          <p className="section-label">本地 PDF 阅读与朗读</p>
-          <h1>把 PDF 变成<br />可以听的文字</h1>
-          <p className="hero-description">
-            在浏览器里提取文字、识别扫描页，再用设备自带声音分段朗读。
-            文件不会上传到服务器。
-          </p>
-          <div className="hero-actions">
-            <button className="primary-button" onClick={onImport}>
-              <Plus weight="bold" />
-              导入 PDF
-            </button>
-            <span>最大 500MB · 页数不限</span>
+      {documents.length === 0 ? (
+        <section className="hero">
+          <div className="hero-copy">
+            <p className="section-label">本地 PDF 阅读与朗读</p>
+            <h1>把 PDF 变成<br />可以听的文字</h1>
+            <p className="hero-description">
+              在浏览器里提取文字、识别扫描页，再用设备自带声音分段朗读。
+              文件不会上传到服务器。
+            </p>
+            <div className="hero-actions">
+              <button className="primary-button" onClick={onImport}>
+                <Plus weight="bold" />
+                导入 PDF
+              </button>
+              <span>最大 500MB · 页数不限</span>
+            </div>
           </div>
-        </div>
-        <button className="drop-visual" onClick={onImport}>
-          <span className="paper-stack paper-back" />
-          <span className="paper-stack paper-mid" />
-          <span className="paper-stack paper-front">
-            <span className="pdf-stamp">PDF</span>
-            <span className="paper-lines" />
-            <span className="wave-line">⌁⌁⌁</span>
-          </span>
-          <span className="drop-caption"><UploadSimple /> 点击选择或拖入文件</span>
-        </button>
-      </section>
+          <button className="drop-visual" onClick={onImport}>
+            <span className="paper-stack paper-back" />
+            <span className="paper-stack paper-mid" />
+            <span className="paper-stack paper-front">
+              <span className="pdf-stamp">PDF</span>
+              <span className="paper-lines" />
+              <span className="wave-line">⌁⌁⌁</span>
+            </span>
+            <span className="drop-caption"><UploadSimple /> 点击选择或拖入文件</span>
+          </button>
+        </section>
+      ) : null}
 
-      <section className="library-section">
+      <section className={`library-section ${documents.length > 0 ? "is-populated" : ""}`}>
         <div className="section-heading">
           <div>
             <p className="section-label">LIBRARY</p>
@@ -151,7 +153,7 @@ function Home({
           </div>
           {documents.length > 0 ? (
             <button className="secondary-button" onClick={onImport}>
-              <Plus /> 新建转换
+              <Plus /> 导入 PDF
             </button>
           ) : null}
         </div>

@@ -68,6 +68,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 .drop-caption { position: absolute; right: 25px; bottom: 23px; left: 25px; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 14px; border: 1px solid rgba(255,255,255,.8); border-radius: 14px; background: rgba(255,255,255,.62); backdrop-filter: blur(12px); font-size: 14px; font-weight: 600; }
 
 .library-section { margin-top: 74px; }
+.library-section.is-populated { margin-top: 46px; }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 25px; }
 .section-heading h2, .dialog-header h2 { margin: 0; font-family: var(--serif); font-size: 34px; }
 .document-list { border-top: 1px solid var(--line); }
@@ -334,6 +335,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
   .paper-front { padding: 25px 22px; }
   .paper-lines { height: 55px; margin-top: 22px; }
   .library-section { margin-top: 50px; }
+  .library-section.is-populated { margin-top: 30px; }
   .document-row { grid-template-columns: 66px minmax(0,1fr) auto; gap: 13px; padding-right: 0; padding-left: 0; }
   .cover { width: 62px; height: 82px; padding: 10px; }
   .cover span { font-size: 10px; }

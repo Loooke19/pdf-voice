@@ -22,6 +22,7 @@ When implementing from a selected generated mock, treat that image as the source
 - At every width, reader actions live in a single “…” menu containing “重新识别当前页” and “复制全文”.
 - Reader document titles are never ellipsized: overflowing titles loop horizontally, while reduced-motion users can scroll them manually. The inline purple segment badge is omitted.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
+- The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.
 - If persistent storage is denied, “申请保护” opens an adaptive install flow: native PWA installation on supporting PC/Android browsers, and Add to Home Screen guidance on iPad/iPhone Safari.
 - Mobile text scrolling never changes pages. The fixed bottom transport exposes previous/next page and previous/next sentence controls around play.
 - Narrow player controls keep voice and rate separate: voice stays at the left edge, rate stays at the right edge, and play remains centered.
