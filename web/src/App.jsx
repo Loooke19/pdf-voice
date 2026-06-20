@@ -1211,6 +1211,8 @@ export function App() {
   });
   const [progress, setProgress] = useState({ value: 0, label: "正在读取文件", detail: "" });
   const importControllerRef = useRef(null);
+  const processingTaskRef = useRef(null);
+  const deletedDocumentIdsRef = useRef(new Set());
 
   useEffect(() => {
     const option = FONT_SIZE_OPTIONS.find((item) => item.id === fontSize) || FONT_SIZE_OPTIONS[1];
@@ -1391,7 +1393,12 @@ export function App() {
   };
 
   const updateProcessingDocument = async (document) => {
+    if (deletedDocumentIdsRef.current.has(document.id)) return false;
     await saveDocument(document);
+    if (deletedDocumentIdsRef.current.has(document.id)) {
+      await deleteDocument(document.id);
+      return false;
+    }
     setDocuments((items) => {
       const summary = {
         ...document,
@@ -1406,6 +1413,7 @@ export function App() {
         : [summary, ...items];
     });
     setSelected((current) => (current?.id === document.id ? document : current));
+    return true;
   };
 
   const processStoredDocument = async (document, options = {}) => {
@@ -1429,6 +1437,7 @@ export function App() {
           value: Math.max(current.value, next.value),
         })),
         onCheckpoint: async (checkpoint) => {
+          if (deletedDocumentIdsRef.current.has(document.id)) return;
           const next = makeProcessingDocument(
             document.file,
             checkpoint,
@@ -1439,6 +1448,7 @@ export function App() {
           await updateProcessingDocument(next);
         },
       });
+      if (deletedDocumentIdsRef.current.has(document.id)) return;
       if (result.interrupted) {
         await updateProcessingDocument(makeProcessingDocument(
           document.file,
@@ -1453,7 +1463,7 @@ export function App() {
       await refreshDocuments();
       await refreshStorageStatus();
     } catch (reason) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && !deletedDocumentIdsRef.current.has(document.id)) {
         const message = reason instanceof Error ? reason.message : "处理 PDF 时发生错误。";
         const failed = {
           ...document,
@@ -1467,10 +1477,20 @@ export function App() {
         setError(message);
       }
     } finally {
-      if (importControllerRef.current === controller) importControllerRef.current = null;
-      setProcessing(false);
-      setProcessingDocumentId(null);
+      if (importControllerRef.current === controller) {
+        importControllerRef.current = null;
+        processingTaskRef.current = null;
+        setProcessing(false);
+        setProcessingDocumentId(null);
+      }
     }
+  };
+
+  const startStoredDocumentProcessing = (document, options = {}) => {
+    const task = processStoredDocument(document, options);
+    processingTaskRef.current = task;
+    void task;
+    return task;
   };
 
   const handleFile = async (file, options = {}) => {
@@ -1501,7 +1521,7 @@ export function App() {
       await updateProcessingDocument(draft);
       await requestPersistentStorage().catch(() => false);
       await refreshDocuments();
-      void processStoredDocument(draft, options);
+      startStoredDocumentProcessing(draft, options);
     } catch (reason) {
       setProcessing(false);
       setError(reason instanceof Error ? reason.message : "保存 PDF 时发生错误。");
@@ -1512,12 +1532,19 @@ export function App() {
     if (processing) return;
     const document = await getDocument(id);
     if (!document?.file || document.processingState === "complete") return;
-    void processStoredDocument(document);
+    startStoredDocumentProcessing(document);
   };
 
   const stopDocumentProcessing = (id) => {
     if (processingDocumentId !== id) return;
     importControllerRef.current?.abort();
+    setImportOpen(false);
+  };
+
+  const interruptProcessing = () => {
+    if (!processing) return;
+    importControllerRef.current?.abort();
+    setImportOpen(false);
   };
 
   const reprocessCurrentPage = async (pageIndex = player.currentIndex) => {
@@ -1579,11 +1606,14 @@ export function App() {
     }
   };
 
-  const openImport = () => {
+  const openImport = async () => {
     setError("");
     if (processing) {
-      setImportOpen(true);
-      return;
+      if (!importControllerRef.current?.signal.aborted) {
+        setImportOpen(true);
+        return;
+      }
+      await processingTaskRef.current?.catch(() => {});
     }
     setImportOpen(true);
   };
@@ -1597,8 +1627,16 @@ export function App() {
   const removeDocument = async (document) => {
     if (!window.confirm(`确定删除“${document.title}”吗？源 PDF 和识别文字都会从当前设备移除。`)) return;
     if (processingDocumentId === document.id) {
+      deletedDocumentIdsRef.current.add(document.id);
       importControllerRef.current?.abort();
-      await new Promise((resolve) => window.setTimeout(resolve, 120));
+      setImportOpen(false);
+      setDocuments((items) => items.filter((item) => item.id !== document.id));
+      if (selected?.id === document.id) {
+        player.stop();
+        setSelected(null);
+        setScreen("home");
+      }
+      await processingTaskRef.current?.catch(() => {});
     }
     await deleteDocument(document.id);
     await refreshDocuments();
@@ -1647,7 +1685,7 @@ export function App() {
         open={importOpen}
         onClose={() => !processing && !interrupted && setImportOpen(false)}
         onChoose={handleFile}
-        onInterrupt={() => importControllerRef.current?.abort()}
+        onInterrupt={interruptProcessing}
         onKeepPartial={() => interrupted && commitDocument(interrupted.file, interrupted, {
           ...interrupted.options,
           partial: true,
