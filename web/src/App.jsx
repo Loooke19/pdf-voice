@@ -1406,7 +1406,7 @@ export function App() {
         file: undefined,
         text: undefined,
         segments: undefined,
-        segmentCount: document.segments.length,
+        segmentCount: document.segments?.length ?? document.segmentCount ?? 0,
       };
       const exists = items.some((item) => item.id === document.id);
       return exists
@@ -1418,6 +1418,12 @@ export function App() {
   };
 
   const processStoredDocument = async (document, options = {}) => {
+    if (!Array.isArray(document.segments)) {
+      document = {
+        ...document,
+        segments: makeSegments(document.text || `第 1 页\n\n${PENDING_PAGE_MESSAGE}`),
+      };
+    }
     const controller = new AbortController();
     importControllerRef.current = controller;
     activeDocumentIdRef.current = document.id;

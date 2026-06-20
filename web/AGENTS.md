@@ -40,6 +40,8 @@ When implementing from a selected generated mock, treat that image as the source
 - On Chinese-dominant OCR lines, low-confidence short Latin, mixed alphanumeric, symbol, and isolated short-number fragments are removed using word-level confidence data; credible English names, years, and measurements remain.
 - OCR excludes lines that are substantially smaller than the page’s dominant body text, plus isolated page numbers and small footer marks near page edges. This keeps image captions, imprint strips, and page furniture out of speech text.
 - When OCR cannot establish reliable body text after layout, size, and confidence filtering, the page is treated as image content and stores only `【此处为配图，请查看原始版面】`; image noise is never exposed as readable or spoken text.
+- A background recognition job reuses one initialized Tesseract worker across all pending OCR pages instead of reloading the Chinese and English models for every page.
+- Saved PDFs are reopened through a local Blob range transport rather than a Blob URL. This avoids WebKit range-request failures after restarting an installed app and keeps large-file memory bounded.
 - PWA update prompts are backed by both service-worker lifecycle events and an uncached `version.json` comparison on startup, focus, foreground return, reconnection, and a five-minute interval.
 - The library logo has no visible update affordance. Clicking the unchanged logo opens a small version bubble with the current version and a manual update check; “立即更新” appears only when a newer build is available.
 - Storage protection never presents a dead or disabled action solely because the Persistence API is unavailable. Installed iOS PWAs receive immediate in-card guidance explaining that iOS has no separate persistence permission prompt, while supported browsers still request persistence normally.
@@ -50,4 +52,5 @@ When implementing from a selected generated mock, treat that image as the source
 - PWA update prompts show the current and target version. Starting an update opens a compact loading toast before the new service worker reloads the app.
 - Mobile text scrolling never changes pages. The fixed bottom transport exposes previous/next page and previous/next sentence controls around play.
 - Narrow player controls keep voice and rate separate: voice stays at the left edge, rate stays at the right edge, and play remains centered.
+- On phone widths, the left voice trigger is icon-only and the right rate trigger is text-only; both retain 44px touch targets without visible button borders or fills.
 - Manual re-recognition operates on the active PDF page only and replaces only that page’s recognized text.

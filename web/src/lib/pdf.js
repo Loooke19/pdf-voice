@@ -15,6 +15,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 const ILLUSTRATION_NOTICE = "【此处为配图，请查看原始版面】";
 const OCR_BASE = `${import.meta.env.BASE_URL}ocr`;
+const PDF_RANGE_CHUNK_SIZE = 1024 * 1024;
 
 function localOcrOptions(logger) {
   return {
@@ -47,6 +48,48 @@ async function renderPage(page) {
   canvas.height = Math.ceil(viewport.height);
   await page.render({ canvasContext: context, viewport }).promise;
   return canvas;
+}
+
+class BlobRangeTransport extends pdfjsLib.PDFDataRangeTransport {
+  constructor(file, initialData) {
+    super(file.size, initialData, false, file.name);
+    this.file = file;
+    this.aborted = false;
+    this.transportReady();
+  }
+
+  async requestDataRange(begin, end) {
+    if (this.aborted) return;
+    try {
+      const chunk = new Uint8Array(await this.file.slice(begin, end).arrayBuffer());
+      if (!this.aborted) this.onDataRange(begin, chunk);
+    } catch {
+      if (!this.aborted) this.onDataRange(begin, null);
+    }
+  }
+
+  abort() {
+    this.aborted = true;
+  }
+}
+
+async function openLocalPdf(file) {
+  const initialEnd = Math.min(file.size, PDF_RANGE_CHUNK_SIZE);
+  const initialData = new Uint8Array(await file.slice(0, initialEnd).arrayBuffer());
+  const range = new BlobRangeTransport(file, initialData);
+  const task = pdfjsLib.getDocument({
+    range,
+    length: file.size,
+    rangeChunkSize: PDF_RANGE_CHUNK_SIZE,
+    disableStream: true,
+    disableAutoFetch: true,
+  });
+  try {
+    return await task.promise;
+  } catch (error) {
+    range.abort();
+    throw error;
+  }
 }
 
 function normalizeOcrText(text) {
@@ -187,14 +230,12 @@ export async function processPdf(file, {
   };
 
   report({ value: 2, label: "正在打开 PDF", detail: file.name });
-  const objectUrl = URL.createObjectURL(file);
   const illustrationPages = new Set(initialIllustrationPages);
   let pdf;
   if (isInterrupted()) return makeResult([], 0, initialOcrPages, illustrationPages, true);
   try {
-    pdf = await pdfjsLib.getDocument({ url: objectUrl }).promise;
+    pdf = await openLocalPdf(file);
   } catch (error) {
-    URL.revokeObjectURL(objectUrl);
     throw error;
   }
   let cleanedUp = false;
@@ -202,7 +243,6 @@ export async function processPdf(file, {
     if (cleanedUp) return;
     cleanedUp = true;
     await pdf.destroy();
-    URL.revokeObjectURL(objectUrl);
   };
 
   try {
@@ -250,41 +290,34 @@ export async function processPdf(file, {
         : `发现 ${pagesNeedingOcr.length} 个扫描页或异常文本页`,
     });
     const { createWorker } = await import("tesseract.js");
-    for (let index = 0; index < pagesNeedingOcr.length; index += 1) {
-      if (isInterrupted()) {
-        const interrupted = await checkpoint(
-          pages,
-          pdf.numPages,
-          initialOcrPages + index,
-          illustrationPages,
-          true,
-        );
-        await cleanup();
-        return interrupted;
-      }
-      let worker;
-      let terminated = false;
-      const terminate = async () => {
-        if (terminated || !worker) return;
-        terminated = true;
-        await worker.terminate();
-      };
-      const abortWorker = () => { void terminate(); };
-      signal?.addEventListener("abort", abortWorker, { once: true });
+    let worker;
+    let activeOcrIndex = 0;
+    let terminated = false;
+    const terminate = async () => {
+      if (terminated || !worker) return;
+      terminated = true;
+      await worker.terminate();
+    };
+    const abortWorker = () => { void terminate(); };
+    signal?.addEventListener("abort", abortWorker, { once: true });
 
-      try {
-        worker = await createWorker(["chi_sim", "eng"], 1, localOcrOptions(
-          (message) => {
-            if (message.status === "recognizing text") {
-              report({
-                value: 64 + ((index + message.progress) / pagesNeedingOcr.length) * 31,
-                label: "正在识别扫描页",
-                detail: `第 ${index + 1} / ${pagesNeedingOcr.length} 个扫描页`,
-              });
-            }
-          },
-        ));
-        await worker.setParameters({ preserve_interword_spaces: "1" });
+    try {
+      worker = await createWorker(["chi_sim", "eng"], 1, localOcrOptions(
+        (message) => {
+          if (message.status === "recognizing text") {
+            report({
+              value: 64
+                + ((activeOcrIndex + message.progress) / pagesNeedingOcr.length) * 31,
+              label: "正在识别扫描页",
+              detail: `第 ${activeOcrIndex + 1} / ${pagesNeedingOcr.length} 个扫描页`,
+            });
+          }
+        },
+      ));
+      await worker.setParameters({ preserve_interword_spaces: "1" });
+
+      for (let index = 0; index < pagesNeedingOcr.length; index += 1) {
+        activeOcrIndex = index;
         if (isInterrupted()) {
           const interrupted = await checkpoint(
             pages,
@@ -296,6 +329,7 @@ export async function processPdf(file, {
           await cleanup();
           return interrupted;
         }
+
         const pageNumber = pagesNeedingOcr[index];
         const page = await pdf.getPage(pageNumber);
         const canvas = await renderPage(page);
@@ -318,24 +352,24 @@ export async function processPdf(file, {
           label: "正在识别扫描页",
           detail: `第 ${pageNumber} 页 · ${index + 1} / ${pagesNeedingOcr.length}`,
         });
-      } catch (error) {
-        if (isInterrupted()) {
-          const interrupted = await checkpoint(
-            pages,
-            pdf.numPages,
-            initialOcrPages + index,
-            illustrationPages,
-            true,
-          );
-          await cleanup();
-          return interrupted;
-        }
-        throw error;
-      } finally {
-        signal?.removeEventListener("abort", abortWorker);
-        await terminate();
+        await new Promise((resolve) => window.setTimeout(resolve, 20));
       }
-      await new Promise((resolve) => window.setTimeout(resolve, 20));
+    } catch (error) {
+      if (isInterrupted()) {
+        const interrupted = await checkpoint(
+          pages,
+          pdf.numPages,
+          initialOcrPages + activeOcrIndex,
+          illustrationPages,
+          true,
+        );
+        await cleanup();
+        return interrupted;
+      }
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", abortWorker);
+      await terminate();
     }
   }
 
@@ -364,10 +398,9 @@ export async function recognizePdfPage(file, pageNumber, { onProgress, signal })
   const isInterrupted = () => Boolean(signal?.aborted);
 
   report(4, "正在打开 PDF", file.name);
-  const bytes = new Uint8Array(await file.arrayBuffer());
   if (isInterrupted()) return { interrupted: true };
 
-  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const pdf = await openLocalPdf(file);
   if (pageNumber < 1 || pageNumber > pdf.numPages) {
     throw new Error("当前页不存在，无法重新识别。");
   }

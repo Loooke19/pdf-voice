@@ -387,6 +387,9 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
   .text-content::-webkit-scrollbar { width: 4px; }
   .recognized-layout { font-size: calc(17px * var(--font-scale)); line-height: 1.85; }
   .player-bar { grid-template-columns: minmax(64px,1fr) auto minmax(64px,1fr); min-height: 106px; gap: 5px; padding: 29px 10px 8px; }
+  .compact-settings-trigger { width: 48px; min-width: 48px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+  .voice-trigger > span { display: none; }
+  .rate-trigger > svg { display: none; }
   .transport { gap: 3px; }
   .transport button { width: 36px; height: 36px; }
   .transport .main-play { width: 52px; height: 52px; margin: 0 2px; }
