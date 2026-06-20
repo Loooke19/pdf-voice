@@ -69,6 +69,34 @@ const formatDate = (stamp) =>
     minute: "2-digit",
   }).format(new Date(stamp));
 
+function isInternalSourceName(value = "") {
+  return /^(?:source|source\.pdf)$/i.test(value.trim());
+}
+
+function inferDocumentTitle(text = "") {
+  const candidates = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => (
+      line
+      && !/^第 \d+ 页$/.test(line)
+      && line !== PENDING_PAGE_MESSAGE
+      && !line.includes("本页以图片为主")
+      && line.length >= 6
+      && line.length <= 48
+      && (line.match(/[\u3400-\u9fff]/g) || []).length >= 4
+    ))
+    .slice(0, 80);
+  return candidates.sort((left, right) => {
+    const titleSignal = (value) => (
+      (/经典|大师|作品|画|艺术|全集|教程|概论|史/.test(value) ? 20 : 0)
+      - Math.abs(value.length - 16)
+    );
+    return titleSignal(right) - titleSignal(left);
+  })[0] || "";
+}
+
 function replacePageText(documentText, pageNumber, pageText, hasIllustration) {
   const pages = documentText
     .replace(/\r/g, "")
@@ -1337,8 +1365,14 @@ export function App() {
     const segments = makeSegments(result.text);
     const document = {
       id: replaceDocument?.id || createId(),
-      title: file.name.replace(/\.pdf$/i, ""),
-      fileName: file.name,
+      title: replaceDocument?.originalTitle
+        || replaceDocument?.title
+        || file.name.replace(/\.pdf$/i, ""),
+      fileName: replaceDocument?.originalFileName || replaceDocument?.fileName || file.name,
+      originalTitle: replaceDocument?.originalTitle
+        || replaceDocument?.title
+        || file.name.replace(/\.pdf$/i, ""),
+      originalFileName: replaceDocument?.originalFileName || replaceDocument?.fileName || file.name,
       file,
       size: file.size,
       pageCount: result.pageCount,
@@ -1367,11 +1401,22 @@ export function App() {
   const makeProcessingDocument = (file, result, existing, processingState = "processing") => {
     const text = result.text || `第 1 页\n\n${PENDING_PAGE_MESSAGE}`;
     const segments = makeSegments(text);
+    const inferredTitle = inferDocumentTitle(existing?.text || text);
+    const preservedTitle = existing?.originalTitle || existing?.title;
+    const title = preservedTitle && !isInternalSourceName(preservedTitle)
+      ? preservedTitle
+      : inferredTitle || file.name.replace(/\.pdf$/i, "");
+    const preservedFileName = existing?.originalFileName || existing?.fileName;
+    const fileName = preservedFileName && !isInternalSourceName(preservedFileName)
+      ? preservedFileName
+      : `${title}.pdf`;
     return {
       ...existing,
       id: existing?.id || createId(),
-      title: file.name.replace(/\.pdf$/i, ""),
-      fileName: file.name,
+      title,
+      fileName,
+      originalTitle: title,
+      originalFileName: fileName,
       file,
       size: file.size,
       pageCount: result.pageCount || existing?.pageCount || 0,
@@ -1530,8 +1575,22 @@ export function App() {
 
   const resumeDocument = async (id) => {
     if (processing) return;
-    const document = await getDocument(id);
+    let document = await getDocument(id);
     if (!document?.file || document.processingState === "complete") return;
+    if (isInternalSourceName(document.title) || isInternalSourceName(document.fileName)) {
+      const repairedTitle = inferDocumentTitle(document.text);
+      if (repairedTitle) {
+        document = {
+          ...document,
+          title: repairedTitle,
+          fileName: `${repairedTitle}.pdf`,
+          originalTitle: repairedTitle,
+          originalFileName: `${repairedTitle}.pdf`,
+          updatedAt: Date.now(),
+        };
+        await updateProcessingDocument(document);
+      }
+    }
     startStoredDocumentProcessing(document);
   };
 

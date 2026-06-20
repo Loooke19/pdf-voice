@@ -171,9 +171,17 @@ export async function getDocument(id) {
       readOpfsFile(id, "source.pdf"),
       readOpfsFile(id, "text.txt"),
     ]);
+    const restoredFile = new File(
+      [file],
+      record.originalFileName || record.fileName || file.name,
+      {
+        type: file.type || "application/pdf",
+        lastModified: file.lastModified,
+      },
+    );
     return {
       ...record,
-      file,
+      file: restoredFile,
       text: await textFile.text(),
     };
   } catch {
