@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ALargeSmall,
   ChevronDown,
   RefreshCw as ArrowClockwise,
   ChevronLeft as CaretLeft,
@@ -47,6 +48,13 @@ import { PwaStatus } from "./components/PwaStatus";
 
 const MAX_BYTES = 500 * 1024 * 1024;
 const ILLUSTRATION_NOTICE = "【此处为配图，请查看原始版面】";
+const FONT_SIZE_OPTIONS = [
+  { id: "small", label: "小", scale: 0.9 },
+  { id: "standard", label: "标准", scale: 1 },
+  { id: "large", label: "大", scale: 1.12 },
+  { id: "extra-large", label: "特大", scale: 1.24 },
+];
+const FONT_SIZE_STORAGE_KEY = "pdf-voice-font-size";
 const formatBytes = (bytes = 0) =>
   bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -92,6 +100,53 @@ function Brand() {
   );
 }
 
+function FontSizeControl({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const controlRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (!controlRef.current?.contains(event.target)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  return (
+    <div className="font-size-control" ref={controlRef}>
+      <button
+        className="font-size-trigger"
+        onClick={() => setOpen((current) => !current)}
+        aria-label="调整全局字体大小"
+        aria-expanded={open}
+      >
+        <ALargeSmall />
+      </button>
+      {open ? (
+        <div className="font-size-popover" role="group" aria-label="全局字体大小">
+          <span>字体大小</span>
+          <div>
+            {FONT_SIZE_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                className={value === option.id ? "is-active" : ""}
+                onClick={() => {
+                  onChange(option.id);
+                  setOpen(false);
+                }}
+                aria-pressed={value === option.id}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Home({
   documents,
   onImport,
@@ -106,6 +161,8 @@ function Home({
   backgrounded = false,
   processing,
   processingDocumentId,
+  fontSize,
+  onFontSizeChange,
 }) {
   const storagePercent = storageStatus?.quota > 0
     ? Math.min(100, Math.max(storageStatus.usage > 0 ? 1 : 0, Math.round(
@@ -122,6 +179,7 @@ function Home({
       <header className="topbar">
         <Brand />
         <div className="topbar-actions">
+          <FontSizeControl value={fontSize} onChange={onFontSizeChange} />
           <button
             className="storage-meter"
             onClick={onOpenStorage}
@@ -653,6 +711,8 @@ function Reader({
   player,
   onSelectSegment,
   processingDocumentId,
+  fontSize,
+  onFontSizeChange,
 }) {
   const [tab, setTab] = useState("text");
   const [copied, setCopied] = useState(false);
@@ -795,14 +855,17 @@ function Reader({
         >
           <List />
         </button>
-        <button
-          className="reader-home-button"
-          onClick={returnHome}
-          aria-label="返回首页"
-          disabled={isEntering || isExiting}
-        >
-          <ChevronDown />
-        </button>
+        <div className="reader-topbar-actions">
+          <FontSizeControl value={fontSize} onChange={onFontSizeChange} />
+          <button
+            className="reader-home-button"
+            onClick={returnHome}
+            aria-label="返回首页"
+            disabled={isEntering || isExiting}
+          >
+            <ChevronDown />
+          </button>
+        </div>
       </header>
       <div className={`reader-workspace ${sidebarOpen ? "is-sidebar-open" : "is-sidebar-closed"}`}>
         <button
@@ -1054,8 +1117,18 @@ export function App() {
   const [storageOpen, setStorageOpen] = useState(false);
   const [interrupted, setInterrupted] = useState(null);
   const [error, setError] = useState("");
+  const [fontSize, setFontSize] = useState(() => {
+    const stored = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+    return FONT_SIZE_OPTIONS.some((option) => option.id === stored) ? stored : "standard";
+  });
   const [progress, setProgress] = useState({ value: 0, label: "正在读取文件", detail: "" });
   const importControllerRef = useRef(null);
+
+  useEffect(() => {
+    const option = FONT_SIZE_OPTIONS.find((item) => item.id === fontSize) || FONT_SIZE_OPTIONS[1];
+    document.documentElement.style.setProperty("--font-scale", String(option.scale));
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, option.id);
+  }, [fontSize]);
 
   const refreshDocuments = useCallback(async () => {
     const items = await listDocuments();
@@ -1466,6 +1539,8 @@ export function App() {
         backgrounded={screen === "reader"}
         processing={processing}
         processingDocumentId={processingDocumentId}
+        fontSize={fontSize}
+        onFontSizeChange={setFontSize}
       />
       {screen === "reader" && selected ? (
         <Reader
@@ -1476,6 +1551,8 @@ export function App() {
           player={player}
           onSelectSegment={(index) => player.select(index, player.isPlaying)}
           processingDocumentId={processingDocumentId}
+          fontSize={fontSize}
+          onFontSizeChange={setFontSize}
         />
       ) : null}
       <ImportDialog
