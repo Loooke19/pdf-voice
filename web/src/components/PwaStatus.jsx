@@ -2,9 +2,35 @@ import { useEffect, useRef, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 const currentVersion = `v${__APP_VERSION__}`;
+const UPDATE_CHECK_TIMEOUT = 8000;
+const UPDATE_RELOAD_DELAY = 900;
+
+function withTimeout(promise, timeout, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      window.setTimeout(() => reject(new Error(message)), timeout);
+    }),
+  ]);
+}
+
+function waitForControllerChange(timeout = UPDATE_RELOAD_DELAY) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      navigator.serviceWorker?.removeEventListener("controllerchange", finish);
+      resolve();
+    };
+    navigator.serviceWorker?.addEventListener("controllerchange", finish, { once: true });
+    window.setTimeout(finish, timeout);
+  });
+}
 
 export function PwaStatus() {
   const registrationRef = useRef(null);
+  const updateAttemptRef = useRef(false);
   const [updating, setUpdating] = useState(false);
   const [targetVersion, setTargetVersion] = useState("");
   const [remoteUpdateAvailable, setRemoteUpdateAvailable] = useState(false);
@@ -94,20 +120,46 @@ export function PwaStatus() {
           <div>
             {showRefresh ? (
               <button onClick={async () => {
+                if (updateAttemptRef.current) return;
+                updateAttemptRef.current = true;
                 setUpdating(true);
                 setUpdateError("");
                 try {
-                  await new Promise((resolve) => window.setTimeout(resolve, 900));
+                  await new Promise((resolve) => window.setTimeout(resolve, 650));
                   if (previewUpdate) {
-                    await new Promise((resolve) => window.setTimeout(resolve, 900));
+                    await new Promise((resolve) => window.setTimeout(resolve, 650));
                     setUpdating(false);
+                    updateAttemptRef.current = false;
                     return;
                   }
-                  await registrationRef.current?.update();
-                  await updateServiceWorker(true);
+                  const registration = registrationRef.current
+                    || await navigator.serviceWorker?.getRegistration(import.meta.env.BASE_URL);
+                  if (!registration) throw new Error("service worker unavailable");
+
+                  await withTimeout(
+                    registration.update(),
+                    UPDATE_CHECK_TIMEOUT,
+                    "service worker update timed out",
+                  );
+
+                  const waitingWorker = registration.waiting;
+                  if (waitingWorker) {
+                    waitingWorker.postMessage({ type: "SKIP_WAITING" });
+                  } else if (needRefresh) {
+                    // Workbox already knows about the waiting worker, even if WebKit has
+                    // not exposed it on the registration object yet.
+                    void updateServiceWorker(false);
+                  }
+
+                  // iOS occasionally misses the controllerchange event. Reload after a
+                  // short grace period either way, so the update toast can never spin
+                  // forever and an already-active build is picked up immediately.
+                  await waitForControllerChange();
+                  window.location.reload();
                 } catch {
                   setUpdating(false);
-                  setUpdateError("更新失败，请检查网络后重试。");
+                  setUpdateError("新版暂未安装完成，请关闭应用后重新打开再试。");
+                  updateAttemptRef.current = false;
                 }
               }}>
                 立即更新
