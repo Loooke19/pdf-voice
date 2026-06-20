@@ -244,6 +244,10 @@ export async function getStorageStatus() {
   ]);
   return {
     supported: Boolean(navigator.storage),
+    persistenceSupported: Boolean(
+      navigator.storage?.persist
+      && navigator.storage?.persisted,
+    ),
     opfsSupported: supportsOpfs(),
     persisted,
     usage: estimate.usage || 0,

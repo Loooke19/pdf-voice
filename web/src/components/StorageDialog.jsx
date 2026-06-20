@@ -35,6 +35,7 @@ const formatBytes = (bytes = 0) => {
 const isInstalledApp = () => (
   window.matchMedia?.("(display-mode: standalone)")?.matches
   || window.navigator.standalone === true
+  || (import.meta.env.DEV && new URLSearchParams(window.location.search).has("installed-app"))
 );
 
 const getInstallPlatform = () => {
@@ -58,6 +59,7 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
   const [working, setWorking] = useState("");
   const [progress, setProgress] = useState({ value: 0, detail: "" });
   const [message, setMessage] = useState("");
+  const [protectionMessage, setProtectionMessage] = useState("");
   const [error, setError] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installOpen, setInstallOpen] = useState(false);
@@ -93,6 +95,7 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
     if (!open) return;
     setSelected(new Set());
     setMessage("");
+    setProtectionMessage("");
     setError("");
     setInstallOpen(false);
     refreshStatus().catch(() => setError("无法读取当前存储状态。"));
@@ -157,28 +160,56 @@ export function StorageDialog({ open, onClose, documents, onChanged }) {
               </span>
             </div>
             {!status?.persisted ? (
-              <button
-                className="secondary-button"
-                disabled={busy || !status?.supported}
-                onClick={async () => {
+              <>
+                <button
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={async () => {
                   const forceInstallGuide = import.meta.env.DEV
                     && new URLSearchParams(window.location.search).has("install-guide");
+                  const forceNoPersistence = import.meta.env.DEV
+                    && new URLSearchParams(window.location.search).has("no-persistence");
+                  setProtectionMessage("");
+
+                  if (!status?.persistenceSupported || forceNoPersistence) {
+                    if (isInstalledApp() && installPlatform === "ios") {
+                      setProtectionMessage(
+                        "已从主屏幕以应用模式运行。iOS 不提供单独的“持久化存储”授权弹窗；请避免卸载应用或清除网站数据，并定期导出备份。",
+                      );
+                      return;
+                    }
+                    if (installPlatform === "ios") {
+                      setInstallOpen(true);
+                      return;
+                    }
+                    setProtectionMessage(
+                      "当前浏览器不提供手动存储保护授权。建议安装为应用并定期导出完整备份。",
+                    );
+                    return;
+                  }
+
                   const granted = forceInstallGuide
                     ? false
                     : await run("persist", () => requestPersistentStorage());
                   if (granted) {
-                    setMessage("已获得持久化保护。");
+                    setProtectionMessage("已获得持久化保护。");
                     return;
                   }
                   if (isInstalledApp()) {
-                    setMessage("应用已经安装；请持续使用一段时间后再次申请保护，并定期保留备份。");
+                    setProtectionMessage("应用已经安装；系统暂未批准持久化保护，请持续使用后重试并定期备份。");
                     return;
                   }
                   setInstallOpen(true);
                 }}
-              >
-                申请保护
-              </button>
+                >
+                  申请保护
+                </button>
+                {protectionMessage ? (
+                  <p className="storage-protection-feedback" aria-live="polite">
+                    <Check /> {protectionMessage}
+                  </p>
+                ) : null}
+              </>
             ) : null}
           </article>
 

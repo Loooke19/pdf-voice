@@ -42,6 +42,7 @@ When implementing from a selected generated mock, treat that image as the source
 - When OCR cannot establish reliable body text after layout, size, and confidence filtering, the page is treated as image content and stores only `【此处为配图，请查看原始版面】`; image noise is never exposed as readable or spoken text.
 - PWA update prompts are backed by both service-worker lifecycle events and an uncached `version.json` comparison on startup, focus, foreground return, reconnection, and a five-minute interval.
 - The library logo has no visible update affordance. Clicking the unchanged logo opens a small version bubble with the current version and a manual update check; “立即更新” appears only when a newer build is available.
+- Storage protection never presents a dead or disabled action solely because the Persistence API is unavailable. Installed iOS PWAs receive immediate in-card guidance explaining that iOS has no separate persistence permission prompt, while supported browsers still request persistence normally.
 - Locally generated document IDs use the shared `createId()` compatibility helper; direct `crypto.randomUUID()` calls are avoided because iOS Safari omits that API on non-secure origins.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.
