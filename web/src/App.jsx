@@ -42,6 +42,7 @@ import {
 } from "./lib/segments";
 import { normalizeRecognizedText } from "./lib/textQuality";
 import { useSpeechPlayer } from "./lib/useSpeechPlayer";
+import { createId } from "./lib/id";
 import { StorageDialog } from "./components/StorageDialog";
 import { PwaStatus } from "./components/PwaStatus";
 
@@ -1171,7 +1172,7 @@ export function App() {
     const { partial = false, replaceDocument = null } = options;
     const segments = makeSegments(result.text);
     const document = {
-      id: replaceDocument?.id || crypto.randomUUID(),
+      id: replaceDocument?.id || createId(),
       title: file.name.replace(/\.pdf$/i, ""),
       fileName: file.name,
       file,
@@ -1205,7 +1206,7 @@ export function App() {
     const segments = makeSegments(text);
     return {
       ...existing,
-      id: existing?.id || crypto.randomUUID(),
+      id: existing?.id || createId(),
       title: file.name.replace(/\.pdf$/i, ""),
       fileName: file.name,
       file,

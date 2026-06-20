@@ -6,6 +6,7 @@ import {
   saveDocument,
   setSetting,
 } from "./db";
+import { createId } from "./id";
 import { makeDocumentPreview, makeSegments } from "./segments";
 
 const BACKUP_SCHEMA = 1;
@@ -102,7 +103,7 @@ export async function restoreBackup(file, onProgress) {
     const text = await textEntry.async("text");
     const source = await sourceEntry.async("blob");
     const duplicated = existingIds.has(metadata.id);
-    const id = duplicated ? crypto.randomUUID() : metadata.id;
+    const id = duplicated ? createId() : metadata.id;
     const segments = makeSegments(text);
     await saveDocument({
       ...metadata,
