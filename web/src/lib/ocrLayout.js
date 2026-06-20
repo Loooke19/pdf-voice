@@ -8,12 +8,79 @@ function validBox(box) {
     && box.y1 > box.y0;
 }
 
+function wordText(word) {
+  return (word?.text || "").replace(/\s+/g, " ").trim();
+}
+
+function isAsciiNoiseCandidate(text) {
+  return text && !/[\u3400-\u9fff]/.test(text) && /[A-Za-z]/.test(text);
+}
+
+function cleanLineText(line) {
+  const words = (line.words || [])
+    .map((word) => ({
+      text: wordText(word),
+      confidence: Number.isFinite(word.confidence) ? word.confidence : 100,
+    }))
+    .filter((word) => word.text);
+  if (!words.length) return (line.text || "").replace(/\s+/g, " ").trim();
+
+  const rawText = words.map((word) => word.text).join(" ");
+  const hanCount = (rawText.match(/[\u3400-\u9fff]/g) || []).length;
+  const letterCount = (rawText.match(/[A-Za-z]/g) || []).length;
+  const chineseDominant = hanCount >= 3 && hanCount > letterCount * 0.7;
+  if (!chineseDominant) return rawText;
+
+  const keep = words.map(() => true);
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    const compact = word.text.replace(/[^A-Za-z0-9]/g, "");
+    if (/^\d{1,2}$/.test(compact) && word.confidence < 65) {
+      keep[index] = false;
+      continue;
+    }
+    if (!isAsciiNoiseCandidate(word.text)) continue;
+
+    const isShort = compact.length <= 3;
+    const isMixedGarbage = /[A-Za-z]/.test(compact) && /\d/.test(compact) && compact.length <= 6;
+    if (word.confidence < 52 || (isShort && word.confidence < 76) || (isMixedGarbage && word.confidence < 82)) {
+      keep[index] = false;
+    }
+  }
+
+  let runStart = 0;
+  while (runStart < words.length) {
+    if (!isAsciiNoiseCandidate(words[runStart].text)) {
+      runStart += 1;
+      continue;
+    }
+    let runEnd = runStart + 1;
+    while (runEnd < words.length && isAsciiNoiseCandidate(words[runEnd].text)) runEnd += 1;
+    const run = words.slice(runStart, runEnd);
+    const averageConfidence = run.reduce((sum, word) => sum + word.confidence, 0) / run.length;
+    const shortRun = run.every((word) => word.text.replace(/[^A-Za-z]/g, "").length <= 3);
+    if ((run.length >= 2 && shortRun && averageConfidence < 84) || averageConfidence < 58) {
+      for (let index = runStart; index < runEnd; index += 1) keep[index] = false;
+    }
+    runStart = runEnd;
+  }
+
+  const cleaned = words
+    .filter((_, index) => keep[index])
+    .map((word) => word.text)
+    .join(" ")
+    .replace(/\s+([，。；：！？、）】》])/g, "$1")
+    .replace(/([（【《])\s+/g, "$1")
+    .trim();
+  return cleaned || rawText;
+}
+
 function collectLines(blocks = []) {
   const lines = [];
   blocks.forEach((block, blockIndex) => {
     (block.paragraphs || []).forEach((paragraph, paragraphIndex) => {
       (paragraph.lines || []).forEach((line, lineIndex) => {
-        const text = (line.text || "").replace(/\s+/g, " ").trim();
+        const text = cleanLineText(line);
         if (!text || !validBox(line.bbox)) return;
         lines.push({
           ...line.bbox,
@@ -156,4 +223,3 @@ export function reconstructOcrLayout(blocks, pageWidth) {
     )).filter(Boolean).join("\n\n");
   }).filter(Boolean).join("\n\n").trim();
 }
-

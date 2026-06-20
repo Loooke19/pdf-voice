@@ -43,8 +43,20 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 .font-size-popover > div { display: grid; grid-template-columns: repeat(4,1fr); gap: 5px; }
 .font-size-popover button { min-height: 38px; padding: 0 5px; border: 0; border-radius: 10px; cursor: pointer; background: #f0ede6; font-size: calc(12px * var(--font-scale)); font-weight: 700; }
 .font-size-popover button.is-active { color: white; background: var(--violet); }
-.brand { display: inline-flex; align-items: center; gap: 11px; font-family: var(--serif); font-size: calc(25px * var(--font-scale)); font-weight: 700; letter-spacing: .08em; }
+.brand-control { position: relative; }
+.brand { display: inline-flex; padding: 0; align-items: center; gap: 11px; border: 0; cursor: pointer; background: transparent; font-family: var(--serif); font-size: calc(25px * var(--font-scale)); font-weight: 700; letter-spacing: .08em; }
 .brand-mark { display: block; width: 40px; height: 40px; border-radius: 10px; box-shadow: 0 8px 20px rgba(74,65,180,.18); }
+.version-popover { position: absolute; z-index: 48; top: calc(100% + 12px); left: 0; width: 238px; padding: 15px; border: 1px solid var(--line); border-radius: 17px; background: var(--paper-light); box-shadow: 0 18px 50px rgba(35,31,48,.16); }
+.version-popover-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.version-popover-heading span { color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.version-popover-heading strong { color: var(--violet); font-size: calc(13px * var(--font-scale)); }
+.version-popover p { margin: 11px 0 0; color: var(--muted); font-size: calc(12px * var(--font-scale)); line-height: 1.5; }
+.version-popover p.is-success { color: var(--green); }
+.version-popover p.is-error { color: #963d48; }
+.version-popover-actions { display: flex; margin-top: 13px; justify-content: flex-end; }
+.version-popover-actions button { min-height: 36px; padding: 0 13px; border: 0; border-radius: 10px; cursor: pointer; color: var(--violet-dark); background: var(--violet-soft); font-size: calc(12px * var(--font-scale)); font-weight: 700; }
+.version-popover-actions button:disabled { cursor: default; opacity: .62; }
+.version-popover-actions .version-update-button { color: white; background: var(--violet); }
 .storage-meter { position: relative; display: grid; width: 48px; height: 48px; flex: 0 0 48px; padding: 4px; place-items: center; border: 0; border-radius: 50%; cursor: pointer; color: var(--violet-dark); background: conic-gradient(var(--violet) var(--storage-percent),#ddd9ce 0); box-shadow: 0 7px 20px rgba(62,56,99,.12); transition: transform 160ms ease, box-shadow 160ms ease; }
 .storage-meter::before { position: absolute; inset: 4px; border: 1px solid rgba(97,87,215,.1); border-radius: inherit; background: var(--paper-light); content: ""; }
 .storage-meter span { position: relative; z-index: 1; font-size: calc(11px * var(--font-scale)); font-weight: 800; letter-spacing: -.03em; }

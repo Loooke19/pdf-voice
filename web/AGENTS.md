@@ -34,7 +34,9 @@ When implementing from a selected generated mock, treat that image as the source
 - In the mobile reader, the app shell, reader header, tabs, and player remain fixed. Only the recognized-text area or original-page stage owns vertical scrolling; opening the reader locks document-level scrolling.
 - Global font sizing is available from the “Aa” control on both the library and reader headers. The selected small, standard, large, or extra-large scale persists on the current device.
 - OCR reconstruction uses Tesseract line coordinates to detect one-, two-, or three-column page layouts. Multi-column pages are read column-by-column from left to right, with text ordered top-to-bottom inside each column.
+- On Chinese-dominant OCR lines, low-confidence short Latin, mixed alphanumeric, symbol, and isolated short-number fragments are removed using word-level confidence data; credible English names, years, and measurements remain.
 - PWA update prompts are backed by both service-worker lifecycle events and an uncached `version.json` comparison on startup, focus, foreground return, reconnection, and a five-minute interval.
+- The library logo has no visible update affordance. Clicking the unchanged logo opens a small version bubble with the current version and a manual update check; “立即更新” appears only when a newer build is available.
 - Locally generated document IDs use the shared `createId()` compatibility helper; direct `crypto.randomUUID()` calls are avoided because iOS Safari omits that API on non-secure origins.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.

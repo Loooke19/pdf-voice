@@ -48,6 +48,7 @@ import { PwaStatus } from "./components/PwaStatus";
 
 const MAX_BYTES = 500 * 1024 * 1024;
 const ILLUSTRATION_NOTICE = "【此处为配图，请查看原始版面】";
+const CURRENT_VERSION = `v${__APP_VERSION__}`;
 const FONT_SIZE_OPTIONS = [
   { id: "small", label: "小", scale: 0.9 },
   { id: "standard", label: "标准", scale: 1 },
@@ -87,15 +88,102 @@ function replacePageText(documentText, pageNumber, pageText, hasIllustration) {
 }
 
 function Brand() {
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState("idle");
+  const [remoteVersion, setRemoteVersion] = useState("");
+  const controlRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (!controlRef.current?.contains(event.target)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  const checkForUpdate = async () => {
+    setStatus("checking");
+    try {
+      const response = await fetch(
+        `${import.meta.env.BASE_URL}version.json?time=${Date.now()}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw new Error("version request failed");
+      const result = await response.json();
+      const nextVersion = result.version ? `v${result.version}` : "";
+      const previewUpdate = import.meta.env.DEV
+        && new URLSearchParams(window.location.search).has("brand-update");
+      setRemoteVersion(previewUpdate ? "v99.0.0" : nextVersion);
+      setStatus(previewUpdate || (nextVersion && nextVersion !== CURRENT_VERSION)
+        ? "available"
+        : "latest");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  const installUpdate = async () => {
+    setStatus("updating");
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration(
+        import.meta.env.BASE_URL,
+      );
+      await registration?.update();
+      if (registration?.waiting) {
+        registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      }
+      window.setTimeout(() => window.location.reload(), 900);
+    } catch {
+      setStatus("error");
+    }
+  };
+
   return (
-    <div className="brand" aria-label="阅声首页">
-      <img
-        className="brand-mark"
-        src={`${import.meta.env.BASE_URL}icons/app-icon.svg`}
-        alt=""
-        aria-hidden="true"
-      />
-      <span>阅声</span>
+    <div className="brand-control" ref={controlRef}>
+      <button
+        className="brand"
+        onClick={() => setOpen((current) => !current)}
+        aria-label="阅声版本信息"
+        aria-expanded={open}
+      >
+        <img
+          className="brand-mark"
+          src={`${import.meta.env.BASE_URL}icons/app-icon.svg`}
+          alt=""
+          aria-hidden="true"
+        />
+        <span>阅声</span>
+      </button>
+      {open ? (
+        <aside className="version-popover" aria-live="polite">
+          <div className="version-popover-heading">
+            <span>当前版本</span>
+            <strong>{CURRENT_VERSION}</strong>
+          </div>
+          {status === "checking" ? <p>正在检查更新…</p> : null}
+          {status === "latest" ? <p className="is-success">已经是最新版本</p> : null}
+          {status === "available" ? (
+            <p>发现新版本 {remoteVersion}</p>
+          ) : null}
+          {status === "updating" ? <p>正在安装新版本…</p> : null}
+          {status === "error" ? <p className="is-error">检查失败，请稍后重试</p> : null}
+          <div className="version-popover-actions">
+            {status === "available" ? (
+              <button className="version-update-button" onClick={installUpdate}>
+                立即更新
+              </button>
+            ) : (
+              <button
+                onClick={checkForUpdate}
+                disabled={status === "checking" || status === "updating"}
+              >
+                {status === "checking" ? "检查中" : "检查更新"}
+              </button>
+            )}
+          </div>
+        </aside>
+      ) : null}
     </div>
   );
 }
