@@ -33,6 +33,8 @@ When implementing from a selected generated mock, treat that image as the source
 - Background recognition does not use a floating progress panel. Its library row owns the task controls: an active job shows a stop button, and a paused job shows a resume button.
 - In the mobile reader, the app shell, reader header, tabs, and player remain fixed. Only the recognized-text area or original-page stage owns vertical scrolling; opening the reader locks document-level scrolling.
 - Global font sizing is available from the “Aa” control on both the library and reader headers. The selected small, standard, large, or extra-large scale persists on the current device.
+- OCR reconstruction uses Tesseract line coordinates to detect one-, two-, or three-column page layouts. Multi-column pages are read column-by-column from left to right, with text ordered top-to-bottom inside each column.
+- PWA update prompts are backed by both service-worker lifecycle events and an uncached `version.json` comparison on startup, focus, foreground return, reconnection, and a five-minute interval.
 - Locally generated document IDs use the shared `createId()` compatibility helper; direct `crypto.randomUUID()` calls are avoided because iOS Safari omits that API on non-secure origins.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.

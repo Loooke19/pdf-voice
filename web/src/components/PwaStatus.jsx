@@ -7,6 +7,7 @@ export function PwaStatus() {
   const registrationRef = useRef(null);
   const [updating, setUpdating] = useState(false);
   const [targetVersion, setTargetVersion] = useState("");
+  const [remoteUpdateAvailable, setRemoteUpdateAvailable] = useState(false);
   const [updateError, setUpdateError] = useState("");
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -24,33 +25,49 @@ export function PwaStatus() {
   });
   const previewUpdate = import.meta.env.DEV
     && new URLSearchParams(window.location.search).has("pwa-update");
-  const showRefresh = needRefresh || previewUpdate;
+  const showRefresh = needRefresh || remoteUpdateAvailable || previewUpdate;
 
   useEffect(() => {
-    const checkForUpdate = () => {
-      if (document.visibilityState === "visible" && navigator.onLine) {
-        registrationRef.current?.update().catch(() => {});
+    const checkForUpdate = async () => {
+      if (document.visibilityState !== "visible" || !navigator.onLine) return;
+      registrationRef.current?.update().catch(() => {});
+      try {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}version.json?time=${Date.now()}`,
+          { cache: "no-store" },
+        );
+        const result = await response.json();
+        const remoteVersion = result.version ? `v${result.version}` : "";
+        setTargetVersion(remoteVersion);
+        setRemoteUpdateAvailable(Boolean(remoteVersion && remoteVersion !== currentVersion));
+      } catch {
+        // A version check is best-effort; the service worker can still announce an update.
       }
     };
-    const interval = window.setInterval(checkForUpdate, 30 * 60 * 1000);
+    void checkForUpdate();
+    const interval = window.setInterval(checkForUpdate, 5 * 60 * 1000);
     document.addEventListener("visibilitychange", checkForUpdate);
     window.addEventListener("online", checkForUpdate);
+    window.addEventListener("focus", checkForUpdate);
+    window.addEventListener("pageshow", checkForUpdate);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", checkForUpdate);
       window.removeEventListener("online", checkForUpdate);
+      window.removeEventListener("focus", checkForUpdate);
+      window.removeEventListener("pageshow", checkForUpdate);
     };
   }, []);
 
   useEffect(() => {
-    if (!showRefresh) return;
+    if (!showRefresh || targetVersion) return;
     fetch(`${import.meta.env.BASE_URL}version.json?time=${Date.now()}`, {
       cache: "no-store",
     })
       .then((response) => response.json())
       .then((result) => setTargetVersion(result.version ? `v${result.version}` : ""))
       .catch(() => setTargetVersion(""));
-  }, [showRefresh]);
+  }, [showRefresh, targetVersion]);
 
   if (!showRefresh && !offlineReady && !updating) return null;
 
@@ -86,6 +103,7 @@ export function PwaStatus() {
                     setUpdating(false);
                     return;
                   }
+                  await registrationRef.current?.update();
                   await updateServiceWorker(true);
                 } catch {
                   setUpdating(false);
@@ -97,6 +115,7 @@ export function PwaStatus() {
             ) : null}
             <button onClick={() => {
               setNeedRefresh(false);
+              setRemoteUpdateAvailable(false);
               setOfflineReady(false);
             }}>
               稍后

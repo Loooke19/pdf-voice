@@ -6,6 +6,7 @@ import {
 } from "./textQuality";
 import { pageHasIllustration } from "./pdfVisuals";
 import { PENDING_PAGE_MESSAGE } from "./segments";
+import { reconstructOcrLayout } from "./ocrLayout";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -51,6 +52,11 @@ async function renderPage(page) {
 function normalizeOcrText(text) {
   const normalized = normalizeRecognizedText(text);
   return normalizeTableOfContents(normalized);
+}
+
+function readOcrText(result, canvas) {
+  const layoutText = reconstructOcrLayout(result.data.blocks, canvas.width);
+  return normalizeOcrText(layoutText || result.data.text);
 }
 
 function normalizeTocPageNumber(raw) {
@@ -289,8 +295,8 @@ export async function processPdf(file, {
         const pageNumber = pagesNeedingOcr[index];
         const page = await pdf.getPage(pageNumber);
         const canvas = await renderPage(page);
-        const result = await worker.recognize(canvas);
-        const recognizedText = normalizeOcrText(result.data.text);
+        const result = await worker.recognize(canvas, {}, { text: true, blocks: true });
+        const recognizedText = readOcrText(result, canvas);
         pages[pageNumber - 1] = isUnreliableRecognizedText(
           recognizedText,
           result.data.confidence,
@@ -396,8 +402,8 @@ export async function recognizePdfPage(file, pageNumber, { onProgress, signal })
     await worker.setParameters({ preserve_interword_spaces: "1" });
     if (isInterrupted()) return { interrupted: true };
 
-    const result = await worker.recognize(canvas);
-    const recognizedText = normalizeOcrText(result.data.text);
+    const result = await worker.recognize(canvas, {}, { text: true, blocks: true });
+    const recognizedText = readOcrText(result, canvas);
     const pageText = isUnreliableRecognizedText(recognizedText, result.data.confidence)
       ? "本页以图片为主，未识别到可靠文字。请切换到“原始版面”查看。"
       : recognizedText;
