@@ -55,8 +55,11 @@ function normalizeOcrText(text) {
 }
 
 function readOcrText(result, canvas) {
-  const layoutText = reconstructOcrLayout(result.data.blocks, canvas.width);
-  return normalizeOcrText(layoutText || result.data.text);
+  const layoutText = reconstructOcrLayout(result.data.blocks, canvas.width, canvas.height);
+  const sourceText = Array.isArray(result.data.blocks)
+    ? layoutText
+    : result.data.text;
+  return normalizeOcrText(sourceText);
 }
 
 function normalizeTocPageNumber(raw) {
@@ -160,6 +163,7 @@ export async function processPdf(file, {
         if (!pageText) return `第 ${index + 1} 页\n\n${PENDING_PAGE_MESSAGE}`;
         const notice = illustrationPages.has(index + 1)
           && !isUnreliableRecognizedText(pageText)
+          && !pageText.includes(ILLUSTRATION_NOTICE)
           ? `\n\n${ILLUSTRATION_NOTICE}`
           : "";
         return `第 ${index + 1} 页\n\n${pageText}${notice}`;
@@ -301,7 +305,7 @@ export async function processPdf(file, {
           recognizedText,
           result.data.confidence,
         )
-          ? "本页以图片为主，未识别到可靠文字。请切换到“原始版面”查看。"
+          ? ILLUSTRATION_NOTICE
           : recognizedText;
         await checkpoint(
           pages,
@@ -405,7 +409,7 @@ export async function recognizePdfPage(file, pageNumber, { onProgress, signal })
     const result = await worker.recognize(canvas, {}, { text: true, blocks: true });
     const recognizedText = readOcrText(result, canvas);
     const pageText = isUnreliableRecognizedText(recognizedText, result.data.confidence)
-      ? "本页以图片为主，未识别到可靠文字。请切换到“原始版面”查看。"
+      ? ILLUSTRATION_NOTICE
       : recognizedText;
 
     report(100, "当前页识别完成", `第 ${pageNumber} 页`);

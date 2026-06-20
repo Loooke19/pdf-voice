@@ -94,6 +94,44 @@ function collectLines(blocks = []) {
   return lines;
 }
 
+function median(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function filterDecorativeLines(lines, pageHeight) {
+  if (!lines.length) return lines;
+  const heights = lines
+    .map((line) => line.y1 - line.y0)
+    .filter((height) => height > 0);
+  const bodyHeight = median(heights);
+  if (!bodyHeight) return lines;
+
+  return lines.filter((line) => {
+    const text = line.text.replace(/\s+/g, " ").trim();
+    const lineHeight = line.y1 - line.y0;
+    const tinyRelativeToBody = lineHeight < bodyHeight * 0.72;
+    const tinyRelativeToPage = Number.isFinite(pageHeight)
+      && pageHeight > 0
+      && lineHeight < pageHeight * 0.0085;
+    if (tinyRelativeToBody || tinyRelativeToPage) return false;
+
+    if (!Number.isFinite(pageHeight) || pageHeight <= 0) return true;
+    const centerY = (line.y0 + line.y1) / 2;
+    const inPageEdge = centerY < pageHeight * 0.055 || centerY > pageHeight * 0.9;
+    if (!inPageEdge) return true;
+
+    const compact = text.replace(/\s/g, "");
+    const isolatedPageNumber = /^(?:第)?\d{1,4}(?:页)?$/.test(compact)
+      || /^[ivxlcdm]{1,8}$/i.test(compact);
+    const footerLike = centerY > pageHeight * 0.92
+      && text.length <= 60
+      && lineHeight <= bodyHeight * 1.05;
+    return !isolatedPageNumber && !footerLike;
+  });
+}
+
 function clusterCenters(lines, pageWidth, count) {
   const samples = lines
     .filter((line) => {
@@ -187,8 +225,8 @@ function joinLines(lines) {
   return text.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function reconstructOcrLayout(blocks, pageWidth) {
-  const lines = collectLines(blocks);
+export function reconstructOcrLayout(blocks, pageWidth, pageHeight) {
+  const lines = filterDecorativeLines(collectLines(blocks), pageHeight);
   if (!lines.length || !Number.isFinite(pageWidth) || pageWidth <= 0) return "";
 
   const centers = detectColumnCenters(lines, pageWidth);

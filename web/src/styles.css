@@ -138,6 +138,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 .dialog-header-actions { display: flex; gap: 8px; }
 .file-drop-zone { display: flex; width: 100%; min-height: 285px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1.5px dashed #b9b1ca; border-radius: 22px; cursor: pointer; background: radial-gradient(circle at 50% 0,rgba(97,87,215,.11),transparent 16rem),#f7f5f1; transition: border 180ms ease,transform 180ms ease,background 180ms ease; }
 .file-drop-zone:hover, .file-drop-zone.is-dragging { border-color: var(--violet); background-color: var(--violet-soft); transform: translateY(-2px); }
+.file-drop-zone:disabled { cursor: wait; opacity: .78; transform: none; }
 .file-drop-zone strong { margin-top: 10px; font-family: var(--serif); font-size: calc(23px * var(--font-scale)); }
 .file-drop-zone > span { color: var(--muted); }
 .file-drop-zone small { margin-top: 16px; color: #8c8792; }
@@ -148,26 +149,9 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
 .privacy-note p, .dialog-footnote { margin: 4px 0 0; color: var(--muted); font-size: calc(13px * var(--font-scale)); line-height: 1.55; }
 .dialog-footnote { text-align: center; }
 .error-message { margin: 14px 0 0; color: #a33e48; font-size: calc(14px * var(--font-scale)); font-weight: 600; text-align: center; }
-.processing-panel { display: flex; min-height: 395px; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.processing-panel h3 { margin: 25px 0 7px; font-family: var(--serif); font-size: calc(25px * var(--font-scale)); }
-.processing-panel p { margin: 0; color: var(--muted); }
-.processing-panel > strong { margin-top: 11px; color: var(--violet); }
-.processing-panel small { max-width: 430px; margin-top: 24px; color: var(--muted); line-height: 1.6; }
-.processing-actions, .interrupt-actions { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 24px; }
 .danger-button { color: #a13f47; }
 .danger-button:hover { border-color: #cf9da1; background: #fff4f3; }
 .primary-button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
-.processing-orbit { display: grid; width: 88px; height: 88px; place-items: center; border-radius: 50%; color: var(--violet); background: var(--violet-soft); animation: breathe 1.6s ease-in-out infinite; }
-.processing-orbit svg { width: 43px; height: 43px; }
-.progress-track { width: min(410px,100%); height: 8px; margin-top: 30px; overflow: hidden; border-radius: 999px; background: #e5e1da; }
-.progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--violet); transition: width 240ms ease; }
-
-.interrupted-panel { display: flex; min-height: 395px; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.interrupted-icon { display: grid; width: 76px; height: 76px; place-items: center; border-radius: 22px; color: #a16428; background: #f4e8d7; }
-.interrupted-icon svg { width: 39px; height: 39px; }
-.interrupted-panel h3 { margin: 22px 0 8px; font-family: var(--serif); font-size: calc(26px * var(--font-scale)); }
-.interrupted-panel > p { max-width: 470px; margin: 0; color: var(--muted); line-height: 1.7; }
-.partial-preview { width: min(470px,100%); max-height: 105px; margin-top: 20px; padding: 15px 17px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; color: #66616c; background: #f1eee7; font-family: var(--serif); font-size: calc(13px * var(--font-scale)); line-height: 1.7; text-align: left; }
 
 .storage-backdrop { overflow-y: auto; place-items: start center; }
 .storage-dialog { width: min(900px,100%); margin: auto; padding: 30px; border: 1px solid rgba(255,255,255,.72); border-radius: 28px; background: var(--paper-light); box-shadow: 0 30px 100px rgba(25,22,38,.25); }
@@ -388,8 +372,6 @@ button:focus-visible, select:focus-visible { outline: 3px solid rgba(97, 87, 215
   .round-play { width: 43px; height: 43px; }
   .import-dialog { padding: 25px 20px; border-radius: 23px; }
   .file-drop-zone { min-height: 260px; }
-  .processing-actions, .interrupt-actions { width: 100%; flex-direction: column; }
-  .processing-actions button, .interrupt-actions button { width: 100%; }
   .reader-topbar { padding: 0 15px; }
   .reader-workspace, .reader-workspace.is-sidebar-closed { display: block; height: calc(100dvh - 76px - 106px); }
   .source-panel { position: absolute; top: 0; bottom: 0; left: 0; width: min(330px,86vw); box-shadow: 18px 0 55px rgba(35,31,48,.2); }

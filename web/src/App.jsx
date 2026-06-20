@@ -82,7 +82,7 @@ function inferDocumentTitle(text = "") {
       line
       && !/^第 \d+ 页$/.test(line)
       && line !== PENDING_PAGE_MESSAGE
-      && !line.includes("本页以图片为主")
+      && !line.includes(ILLUSTRATION_NOTICE)
       && line.length >= 6
       && line.length <= 48
       && (line.match(/[\u3400-\u9fff]/g) || []).length >= 4
@@ -275,7 +275,6 @@ function Home({
   activeDocument,
   player,
   backgrounded = false,
-  processing,
   processingDocumentId,
   fontSize,
   onFontSizeChange,
@@ -374,7 +373,9 @@ function Home({
                       ? "已完成"
                       : processingDocumentId === doc.id
                         ? `识别中 · ${doc.completedPages || 0} / ${doc.pageCount || "?"} 页`
-                        : `待继续 · ${doc.completedPages || 0} / ${doc.pageCount || "?"} 页`}
+                        : doc.processingState === "queued"
+                          ? `排队中 · 已完成 ${doc.completedPages || 0} 页`
+                          : `待继续 · ${doc.completedPages || 0} / ${doc.pageCount || "?"} 页`}
                   </span>
                   <h3>{doc.title}</h3>
                   <p>{doc.preview || "已识别文字，等待朗读。"}</p>
@@ -391,10 +392,12 @@ function Home({
                     >
                       <Play fill="currentColor" />
                     </button>
-                  ) : processingDocumentId === doc.id ? (
+                  ) : processingDocumentId === doc.id || doc.processingState === "queued" ? (
                     <button
                       className="round-play stop-processing"
-                      aria-label={`停止识别 ${doc.title}`}
+                      aria-label={processingDocumentId === doc.id
+                        ? `停止识别 ${doc.title}`
+                        : `取消排队 ${doc.title}`}
                       onClick={() => onStop(doc.id)}
                     >
                       <StopCircle />
@@ -403,7 +406,6 @@ function Home({
                     <button
                       className="round-play resume-processing"
                       aria-label={`继续识别 ${doc.title}`}
-                      disabled={processing}
                       onClick={() => onResume(doc.id)}
                     >
                       <ArrowClockwise />
@@ -442,12 +444,8 @@ function ImportDialog({
   open,
   onClose,
   onChoose,
-  onInterrupt,
-  onKeepPartial,
-  onDiscardPartial,
-  processing,
-  interrupted,
-  progress,
+  saving,
+  saveMessage,
   error,
 }) {
   const inputRef = useRef(null);
@@ -456,13 +454,13 @@ function ImportDialog({
   if (!open) return null;
 
   const acceptFiles = (files) => {
-    const file = files?.[0];
-    if (file) onChoose(file);
+    const selectedFiles = Array.from(files || []);
+    if (selectedFiles.length) onChoose(selectedFiles);
   };
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !processing) onClose();
+      if (event.target === event.currentTarget && !saving) onClose();
     }}>
       <section className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
         <div className="dialog-header">
@@ -470,94 +468,52 @@ function ImportDialog({
             <p className="section-label">LOCAL IMPORT</p>
             <h2 id="import-title">导入 PDF</h2>
           </div>
-          {!processing && !interrupted ? (
-            <div className="dialog-header-actions">
-              <button className="icon-button" onClick={onClose} aria-label="关闭">
-                <X />
-              </button>
-            </div>
-          ) : null}
+          <div className="dialog-header-actions">
+            <button className="icon-button" onClick={onClose} aria-label="关闭">
+              <X />
+            </button>
+          </div>
         </div>
 
         <input
           ref={inputRef}
           type="file"
           accept="application/pdf,.pdf"
+          multiple
           hidden
-          onChange={(event) => acceptFiles(event.target.files)}
+          onChange={(event) => {
+            acceptFiles(event.target.files);
+            event.target.value = "";
+          }}
         />
 
-        {interrupted ? (
-          <div className="interrupted-panel" aria-live="polite">
-            <span className="interrupted-icon"><StopCircle /></span>
-            <h3>导入已中断</h3>
-            <p>
-              已完成 {interrupted.completedPages} / {interrupted.pageCount || "?"} 页。
-              你可以保留目前识别到的文字，或放弃这次导入。
-            </p>
-            <div className="partial-preview">
-              {interrupted.text
-                ? `${interrupted.text.replace(/\s+/g, " ").slice(0, 150)}${interrupted.text.length > 150 ? "…" : ""}`
-                : "还没有提取到可保存的文字。"}
-            </div>
-            <div className="interrupt-actions">
-              <button
-                className="primary-button"
-                onClick={onKeepPartial}
-                disabled={!interrupted.text}
-              >
-                <Check /> 导入当前内容
-              </button>
-              <button className="secondary-button danger-button" onClick={onDiscardPartial}>
-                <X /> 取消导入
-              </button>
-            </div>
+        <button
+          className={`file-drop-zone ${dragging ? "is-dragging" : ""}`}
+          onClick={() => !saving && inputRef.current?.click()}
+          disabled={saving}
+          onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            if (!saving) acceptFiles(event.dataTransfer.files);
+          }}
+        >
+          <span className="upload-icon"><UploadSimple /></span>
+          <strong>{saving ? "正在保存到设备" : "选择一个或多个 PDF"}</strong>
+          <span>{saving ? saveMessage : "或将多个文件拖放到这里"}</span>
+          <small>单个文件最大 500MB · 保存后自动排队识别</small>
+        </button>
+        {error ? <p className="error-message">{error}</p> : null}
+        <div className="privacy-note">
+          <LockKey />
+          <div>
+            <strong>只在当前设备处理</strong>
+            <p>文件先保存到文档库，再按顺序后台识别；你可以随时继续导入更多 PDF。</p>
           </div>
-        ) : processing ? (
-          <div className="processing-panel" aria-live="polite">
-            <div className="processing-orbit"><FilePdf /></div>
-            <h3>{progress.label}</h3>
-            <p>{progress.detail}</p>
-            <div className="progress-track"><span style={{ width: `${progress.value}%` }} /></div>
-            <strong>{Math.round(progress.value)}%</strong>
-            <div className="processing-actions">
-              <button className="secondary-button danger-button" onClick={onInterrupt}><StopCircle /> 中断导入</button>
-            </div>
-            <small>
-              可最小化到右下角继续处理。扫描页首次会从当前网址下载本地 OCR 模型；
-              iPad 上请保持应用在前台。
-            </small>
-          </div>
-        ) : (
-          <>
-            <button
-              className={`file-drop-zone ${dragging ? "is-dragging" : ""}`}
-              onClick={() => inputRef.current?.click()}
-              onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
-              onDragOver={(event) => event.preventDefault()}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragging(false);
-                acceptFiles(event.dataTransfer.files);
-              }}
-            >
-              <span className="upload-icon"><UploadSimple /></span>
-              <strong>选择本地 PDF</strong>
-              <span>或将文件拖放到这里</span>
-              <small>最大 500MB · 页数不限</small>
-            </button>
-            {error ? <p className="error-message">{error}</p> : null}
-            <div className="privacy-note">
-              <LockKey />
-              <div>
-                <strong>只在当前设备处理</strong>
-                <p>文字提取、扫描页 OCR 和历史保存均在浏览器内完成，不上传源文件。</p>
-              </div>
-            </div>
-            <p className="dialog-footnote">扫描 PDF 会逐页识别，长文档可能需要数分钟。</p>
-          </>
-        )}
+        </div>
+        <p className="dialog-footnote">识别进度、停止和继续操作均在“我的文档”中显示。</p>
       </section>
     </div>
   );
@@ -1231,15 +1187,18 @@ export function App() {
   const [processing, setProcessing] = useState(false);
   const [processingDocumentId, setProcessingDocumentId] = useState(null);
   const [storageOpen, setStorageOpen] = useState(false);
-  const [interrupted, setInterrupted] = useState(null);
   const [error, setError] = useState("");
+  const [importSaving, setImportSaving] = useState(false);
+  const [importSaveMessage, setImportSaveMessage] = useState("");
   const [fontSize, setFontSize] = useState(() => {
     const stored = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY);
     return FONT_SIZE_OPTIONS.some((option) => option.id === stored) ? stored : "standard";
   });
-  const [progress, setProgress] = useState({ value: 0, label: "正在读取文件", detail: "" });
   const importControllerRef = useRef(null);
   const processingTaskRef = useRef(null);
+  const queueRunnerRef = useRef(null);
+  const recognitionQueueRef = useRef([]);
+  const activeDocumentIdRef = useRef(null);
   const deletedDocumentIdsRef = useRef(new Set());
 
   useEffect(() => {
@@ -1306,6 +1265,37 @@ export function App() {
         await saveDocument(demo);
         await refreshDocuments();
       }
+      const queuedItems = items.filter((item) => (
+        item.processingState === "queued" || item.processingState === "processing"
+      ));
+      if (queuedItems.length) {
+        queuedItems
+          .sort((left, right) => left.createdAt - right.createdAt)
+          .forEach((item) => {
+            if (item.id !== activeDocumentIdRef.current
+              && !recognitionQueueRef.current.includes(item.id)) {
+              recognitionQueueRef.current.push(item.id);
+            }
+          });
+        await Promise.all(queuedItems.map((item) => (
+          item.processingState === "processing"
+            ? updateDocumentMetadata(item.id, {
+              processingState: "queued",
+              preview: `等待后台识别 · 已完成 ${item.completedPages || 0} 页`,
+            })
+            : Promise.resolve()
+        )));
+        setDocuments((current) => current.map((item) => (
+          item.processingState === "processing"
+            ? {
+              ...item,
+              processingState: "queued",
+              preview: `等待后台识别 · 已完成 ${item.completedPages || 0} 页`,
+            }
+            : item
+        )));
+        void runRecognitionQueue();
+      }
     }).catch(() => setError("无法读取本地文档库。"));
   }, [refreshDocuments, refreshStorageStatus]);
 
@@ -1360,44 +1350,6 @@ export function App() {
     setScreen("reader");
   };
 
-  const commitDocument = async (file, result, options = {}) => {
-    const { partial = false, replaceDocument = null } = options;
-    const segments = makeSegments(result.text);
-    const document = {
-      id: replaceDocument?.id || createId(),
-      title: replaceDocument?.originalTitle
-        || replaceDocument?.title
-        || file.name.replace(/\.pdf$/i, ""),
-      fileName: replaceDocument?.originalFileName || replaceDocument?.fileName || file.name,
-      originalTitle: replaceDocument?.originalTitle
-        || replaceDocument?.title
-        || file.name.replace(/\.pdf$/i, ""),
-      originalFileName: replaceDocument?.originalFileName || replaceDocument?.fileName || file.name,
-      file,
-      size: file.size,
-      pageCount: result.pageCount,
-      completedPages: result.completedPages || result.pageCount,
-      partial,
-      processingState: partial ? "paused" : "complete",
-      ocrPages: result.ocrPages,
-      illustrationPages: result.illustrationPages || [],
-      text: result.text,
-      preview: makeDocumentPreview(segments),
-      segments,
-      lastSegment: 0,
-      createdAt: replaceDocument?.createdAt || Date.now(),
-      updatedAt: Date.now(),
-    };
-    await saveDocument(document);
-    await requestPersistentStorage().catch(() => false);
-    await refreshDocuments();
-    setSelected(document);
-    player.load(0, false);
-    setInterrupted(null);
-    setImportOpen(false);
-    setScreen("reader");
-  };
-
   const makeProcessingDocument = (file, result, existing, processingState = "processing") => {
     const text = result.text || `第 1 页\n\n${PENDING_PAGE_MESSAGE}`;
     const segments = makeSegments(text);
@@ -1429,7 +1381,11 @@ export function App() {
       text,
       preview: processingState === "complete"
         ? makeDocumentPreview(segments)
-        : `正在识别 · 已完成 ${result.completedPages ?? existing?.completedPages ?? 0} 页`,
+        : processingState === "queued"
+          ? `等待后台识别 · 已完成 ${result.completedPages ?? existing?.completedPages ?? 0} 页`
+          : processingState === "paused"
+            ? `识别已暂停 · 已完成 ${result.completedPages ?? existing?.completedPages ?? 0} 页`
+            : `正在识别 · 已完成 ${result.completedPages ?? existing?.completedPages ?? 0} 页`,
       segments,
       lastSegment: Math.min(existing?.lastSegment || 0, Math.max(0, segments.length - 1)),
       createdAt: existing?.createdAt || Date.now(),
@@ -1464,10 +1420,8 @@ export function App() {
   const processStoredDocument = async (document, options = {}) => {
     const controller = new AbortController();
     importControllerRef.current = controller;
+    activeDocumentIdRef.current = document.id;
     setProcessingDocumentId(document.id);
-    setInterrupted(null);
-    setImportOpen(false);
-    setProgress({ value: 0, label: "正在读取文件", detail: document.fileName });
     setProcessing(true);
     try {
       const { processPdf } = await import("./lib/pdf");
@@ -1477,10 +1431,7 @@ export function App() {
         initialText: options.forceOcr ? "" : document.text,
         initialOcrPages: options.forceOcr ? 0 : document.ocrPages,
         initialIllustrationPages: options.forceOcr ? [] : document.illustrationPages,
-        onProgress: (next) => setProgress((current) => ({
-          ...next,
-          value: Math.max(current.value, next.value),
-        })),
+        onProgress: () => {},
         onCheckpoint: async (checkpoint) => {
           if (deletedDocumentIdsRef.current.has(document.id)) return;
           const next = makeProcessingDocument(
@@ -1524,57 +1475,120 @@ export function App() {
     } finally {
       if (importControllerRef.current === controller) {
         importControllerRef.current = null;
-        processingTaskRef.current = null;
+        activeDocumentIdRef.current = null;
         setProcessing(false);
         setProcessingDocumentId(null);
       }
     }
   };
 
-  const startStoredDocumentProcessing = (document, options = {}) => {
-    const task = processStoredDocument(document, options);
-    processingTaskRef.current = task;
-    void task;
-    return task;
+  const runRecognitionQueue = async () => {
+    if (queueRunnerRef.current) return queueRunnerRef.current;
+    if (processingTaskRef.current) {
+      void processingTaskRef.current.finally(() => {
+        if (recognitionQueueRef.current.length) void runRecognitionQueue();
+      });
+      return processingTaskRef.current;
+    }
+    const runner = (async () => {
+      while (recognitionQueueRef.current.length) {
+        const id = recognitionQueueRef.current.shift();
+        if (!id || deletedDocumentIdsRef.current.has(id)) continue;
+        const document = await getDocument(id);
+        if (!document?.file || document.processingState === "complete") continue;
+        const task = processStoredDocument(document);
+        processingTaskRef.current = task;
+        try {
+          await task;
+        } finally {
+          if (processingTaskRef.current === task) processingTaskRef.current = null;
+        }
+      }
+    })();
+    queueRunnerRef.current = runner;
+    try {
+      await runner;
+    } finally {
+      if (queueRunnerRef.current === runner) queueRunnerRef.current = null;
+      if (recognitionQueueRef.current.length) void runRecognitionQueue();
+    }
+    return runner;
   };
 
-  const handleFile = async (file, options = {}) => {
+  const enqueueDocument = async (document, { front = false } = {}) => {
+    if (!document?.id
+      || deletedDocumentIdsRef.current.has(document.id)
+      || activeDocumentIdRef.current === document.id
+      || recognitionQueueRef.current.includes(document.id)) return;
+    const queued = makeProcessingDocument(
+      document.file,
+      {
+        text: document.text,
+        pageCount: document.pageCount,
+        completedPages: document.completedPages,
+        ocrPages: document.ocrPages,
+        illustrationPages: document.illustrationPages,
+      },
+      document,
+      "queued",
+    );
+    await updateProcessingDocument(queued);
+    if (front) recognitionQueueRef.current.unshift(document.id);
+    else recognitionQueueRef.current.push(document.id);
+    void runRecognitionQueue();
+  };
+
+  const handleFiles = async (files) => {
     setError("");
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setError("请选择 PDF 文件。");
-      return;
-    }
-    if (file.size > MAX_BYTES) {
-      setError("文件超过 500MB，请选择更小的 PDF。");
-      return;
-    }
-    if (processing) {
-      setError("当前已有一份文档正在识别，请稍后再导入。");
+    const selectedFiles = Array.from(files || []);
+    const validFiles = selectedFiles.filter((file) => (
+      (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))
+      && file.size <= MAX_BYTES
+    ));
+    if (!validFiles.length) {
+      setError(selectedFiles.some((file) => file.size > MAX_BYTES)
+        ? "文件超过 500MB，请选择更小的 PDF。"
+        : "请选择 PDF 文件。");
       return;
     }
 
-    setProcessing(true);
-    setProgress({ value: 1, label: "正在保存源文件", detail: file.name });
+    setImportSaving(true);
     try {
-      const draft = makeProcessingDocument(file, {
-        text: `第 1 页\n\n${PENDING_PAGE_MESSAGE}`,
-        pageCount: 0,
-        completedPages: 0,
-        ocrPages: 0,
-        illustrationPages: [],
-      }, null, "processing");
-      await updateProcessingDocument(draft);
+      const drafts = [];
+      for (let index = 0; index < validFiles.length; index += 1) {
+        const file = validFiles[index];
+        setImportSaveMessage(`${index + 1} / ${validFiles.length} · ${file.name}`);
+        const draft = makeProcessingDocument(file, {
+          text: `第 1 页\n\n${PENDING_PAGE_MESSAGE}`,
+          pageCount: 0,
+          completedPages: 0,
+          ocrPages: 0,
+          illustrationPages: [],
+        }, null, "queued");
+        await updateProcessingDocument(draft);
+        drafts.push(draft);
+      }
       await requestPersistentStorage().catch(() => false);
       await refreshDocuments();
-      startStoredDocumentProcessing(draft, options);
+      drafts.forEach((draft) => {
+        if (!recognitionQueueRef.current.includes(draft.id)) {
+          recognitionQueueRef.current.push(draft.id);
+        }
+      });
+      setImportOpen(false);
+      void runRecognitionQueue();
+      if (validFiles.length < selectedFiles.length) {
+        setError("部分文件不是 PDF 或超过 500MB，已跳过。");
+      }
     } catch (reason) {
-      setProcessing(false);
       setError(reason instanceof Error ? reason.message : "保存 PDF 时发生错误。");
+    } finally {
+      setImportSaving(false);
+      setImportSaveMessage("");
     }
   };
 
   const resumeDocument = async (id) => {
-    if (processing) return;
     let document = await getDocument(id);
     if (!document?.file || document.processingState === "complete") return;
     if (isInternalSourceName(document.title) || isInternalSourceName(document.fileName)) {
@@ -1591,45 +1605,49 @@ export function App() {
         await updateProcessingDocument(document);
       }
     }
-    startStoredDocumentProcessing(document);
+    await enqueueDocument(document, { front: true });
   };
 
-  const stopDocumentProcessing = (id) => {
-    if (processingDocumentId !== id) return;
-    importControllerRef.current?.abort();
-    setImportOpen(false);
+  const stopDocumentProcessing = async (id) => {
+    if (processingDocumentId === id) {
+      importControllerRef.current?.abort();
+      return;
+    }
+    const queueIndex = recognitionQueueRef.current.indexOf(id);
+    if (queueIndex < 0) return;
+    recognitionQueueRef.current.splice(queueIndex, 1);
+    const document = await getDocument(id);
+    if (!document) return;
+    await updateProcessingDocument(makeProcessingDocument(
+      document.file,
+      {
+        text: document.text,
+        pageCount: document.pageCount,
+        completedPages: document.completedPages,
+        ocrPages: document.ocrPages,
+        illustrationPages: document.illustrationPages,
+      },
+      document,
+      "paused",
+    ));
   };
 
-  const interruptProcessing = () => {
-    if (!processing) return;
-    importControllerRef.current?.abort();
-    setImportOpen(false);
-  };
-
-  const reprocessCurrentPage = async (pageIndex = player.currentIndex) => {
-    if (!selected?.file) return;
+  const performReprocessCurrentPage = async (pageIndex = player.currentIndex) => {
+    if (!selected?.file || processing) return;
     const pageNumber = pageIndex + 1;
     const playbackIndex = player.currentIndex;
     const controller = new AbortController();
     importControllerRef.current = controller;
     setError("");
-    setInterrupted(null);
-    setImportOpen(true);
-    setProgress({
-      value: 0,
-      label: "正在准备当前页",
-      detail: `仅重新识别第 ${pageNumber} 页`,
-    });
     setProcessing(true);
 
     try {
       const { recognizePdfPage } = await import("./lib/pdf");
       const result = await recognizePdfPage(selected.file, pageNumber, {
         signal: controller.signal,
-        onProgress: (next) => setProgress(next),
+        onProgress: () => {},
       });
       if (result.interrupted) {
-        setImportOpen(false);
         return;
       }
 
@@ -1654,7 +1672,6 @@ export function App() {
       setSelected(next);
       await refreshDocuments();
       player.load(Math.min(playbackIndex, segments.length - 1), false);
-      setImportOpen(false);
     } catch (reason) {
       if (!controller.signal.aborted) {
         setError(reason instanceof Error ? reason.message : "重新识别当前页时发生错误。");
@@ -1665,26 +1682,24 @@ export function App() {
     }
   };
 
-  const openImport = async () => {
-    setError("");
-    if (processing) {
-      if (!importControllerRef.current?.signal.aborted) {
-        setImportOpen(true);
-        return;
-      }
-      await processingTaskRef.current?.catch(() => {});
-    }
-    setImportOpen(true);
+  const reprocessCurrentPage = (pageIndex = player.currentIndex) => {
+    if (processingTaskRef.current) return;
+    const task = performReprocessCurrentPage(pageIndex);
+    processingTaskRef.current = task;
+    void task.finally(() => {
+      if (processingTaskRef.current === task) processingTaskRef.current = null;
+      if (recognitionQueueRef.current.length) void runRecognitionQueue();
+    });
   };
 
-  const discardInterrupted = () => {
-    setInterrupted(null);
+  const openImport = () => {
     setError("");
-    setImportOpen(false);
+    setImportOpen(true);
   };
 
   const removeDocument = async (document) => {
     if (!window.confirm(`确定删除“${document.title}”吗？源 PDF 和识别文字都会从当前设备移除。`)) return;
+    recognitionQueueRef.current = recognitionQueueRef.current.filter((id) => id !== document.id);
     if (processingDocumentId === document.id) {
       deletedDocumentIdsRef.current.add(document.id);
       importControllerRef.current?.abort();
@@ -1722,7 +1737,6 @@ export function App() {
         activeDocument={activeDocument}
         player={player}
         backgrounded={screen === "reader"}
-        processing={processing}
         processingDocumentId={processingDocumentId}
         fontSize={fontSize}
         onFontSizeChange={setFontSize}
@@ -1742,17 +1756,10 @@ export function App() {
       ) : null}
       <ImportDialog
         open={importOpen}
-        onClose={() => !processing && !interrupted && setImportOpen(false)}
-        onChoose={handleFile}
-        onInterrupt={interruptProcessing}
-        onKeepPartial={() => interrupted && commitDocument(interrupted.file, interrupted, {
-          ...interrupted.options,
-          partial: true,
-        })}
-        onDiscardPartial={discardInterrupted}
-        processing={processing}
-        interrupted={interrupted}
-        progress={progress}
+        onClose={() => setImportOpen(false)}
+        onChoose={handleFiles}
+        saving={importSaving}
+        saveMessage={importSaveMessage}
         error={error}
       />
       <StorageDialog
