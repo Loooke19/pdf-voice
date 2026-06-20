@@ -14,7 +14,6 @@ import {
   Headphones,
   Menu as List,
   LockKeyhole as LockKey,
-  Minus,
   Pause,
   Play,
   Plus,
@@ -98,6 +97,7 @@ function Home({
   onImport,
   onOpen,
   onResume,
+  onStop,
   onDelete,
   onOpenStorage,
   storageStatus,
@@ -217,11 +217,19 @@ function Home({
                     >
                       <Play fill="currentColor" />
                     </button>
+                  ) : processingDocumentId === doc.id ? (
+                    <button
+                      className="round-play stop-processing"
+                      aria-label={`停止识别 ${doc.title}`}
+                      onClick={() => onStop(doc.id)}
+                    >
+                      <StopCircle />
+                    </button>
                   ) : (
                     <button
                       className="round-play resume-processing"
                       aria-label={`继续识别 ${doc.title}`}
-                      disabled={processing || processingDocumentId === doc.id}
+                      disabled={processing}
                       onClick={() => onResume(doc.id)}
                     >
                       <ArrowClockwise />
@@ -258,9 +266,6 @@ function Home({
 
 function ImportDialog({
   open,
-  minimized,
-  onMinimize,
-  onRestore,
   onClose,
   onChoose,
   onInterrupt,
@@ -273,23 +278,6 @@ function ImportDialog({
 }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
-
-  if (processing && minimized) {
-    return (
-      <aside className="import-mini" aria-live="polite">
-        <button className="import-mini-main" onClick={onRestore}>
-          <span className="mini-processing-icon"><FilePdf /></span>
-          <span>
-            <strong>{progress.label}</strong>
-            <small>{progress.detail}</small>
-          </span>
-          <b>{Math.round(progress.value)}%</b>
-        </button>
-        <div className="mini-progress-track"><span style={{ width: `${progress.value}%` }} /></div>
-        <button className="mini-stop-button" onClick={onInterrupt}><StopCircle /> 中断</button>
-      </aside>
-    );
-  }
 
   if (!open) return null;
 
@@ -359,7 +347,6 @@ function ImportDialog({
             <div className="progress-track"><span style={{ width: `${progress.value}%` }} /></div>
             <strong>{Math.round(progress.value)}%</strong>
             <div className="processing-actions">
-              <button className="secondary-button" onClick={onMinimize}><Minus /> 最小化</button>
               <button className="secondary-button danger-button" onClick={onInterrupt}><StopCircle /> 中断导入</button>
             </div>
             <small>
@@ -688,6 +675,21 @@ function Reader({
   const viewingPlaybackPage = viewedIndex === player.currentIndex;
 
   useEffect(() => {
+    const page = globalThis.document;
+    const previousHtmlOverflow = page.documentElement.style.overflow;
+    const previousBodyOverflow = page.body.style.overflow;
+    const previousBodyOverscroll = page.body.style.overscrollBehavior;
+    page.documentElement.style.overflow = "hidden";
+    page.body.style.overflow = "hidden";
+    page.body.style.overscrollBehavior = "none";
+    return () => {
+      page.documentElement.style.overflow = previousHtmlOverflow;
+      page.body.style.overflow = previousBodyOverflow;
+      page.body.style.overscrollBehavior = previousBodyOverscroll;
+    };
+  }, []);
+
+  useEffect(() => {
     const previousPlayingIndex = previousPlayingIndexRef.current;
     setViewedIndex((index) => (
       index === previousPlayingIndex ? player.currentIndex : index
@@ -819,7 +821,6 @@ function Reader({
         />
         <section
           className={`reading-pane ${tab === "source" ? "is-source-mode" : ""}`}
-          ref={readingPaneRef}
         >
           <div className="reading-header">
             <div>
@@ -876,6 +877,7 @@ function Reader({
           {tab === "text" ? (
             <article
               className={`text-content ${viewingPlaybackPage ? "" : "is-previewing"}`}
+              ref={readingPaneRef}
             >
               <h2>{current?.title}</h2>
               <pre className="recognized-layout">
@@ -1047,7 +1049,6 @@ export function App() {
   const [screen, setScreen] = useState("home");
   const [selected, setSelected] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [importMinimized, setImportMinimized] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [processingDocumentId, setProcessingDocumentId] = useState(null);
   const [storageOpen, setStorageOpen] = useState(false);
@@ -1197,7 +1198,6 @@ export function App() {
     player.load(0, false);
     setInterrupted(null);
     setImportOpen(false);
-    setImportMinimized(false);
     setScreen("reader");
   };
 
@@ -1252,7 +1252,6 @@ export function App() {
     importControllerRef.current = controller;
     setProcessingDocumentId(document.id);
     setInterrupted(null);
-    setImportMinimized(true);
     setImportOpen(false);
     setProgress({ value: 0, label: "正在读取文件", detail: document.fileName });
     setProcessing(true);
@@ -1310,7 +1309,6 @@ export function App() {
       if (importControllerRef.current === controller) importControllerRef.current = null;
       setProcessing(false);
       setProcessingDocumentId(null);
-      setImportMinimized(false);
     }
   };
 
@@ -1356,6 +1354,11 @@ export function App() {
     void processStoredDocument(document);
   };
 
+  const stopDocumentProcessing = (id) => {
+    if (processingDocumentId !== id) return;
+    importControllerRef.current?.abort();
+  };
+
   const reprocessCurrentPage = async (pageIndex = player.currentIndex) => {
     if (!selected?.file) return;
     const pageNumber = pageIndex + 1;
@@ -1364,7 +1367,6 @@ export function App() {
     importControllerRef.current = controller;
     setError("");
     setInterrupted(null);
-    setImportMinimized(false);
     setImportOpen(true);
     setProgress({
       value: 0,
@@ -1419,7 +1421,6 @@ export function App() {
   const openImport = () => {
     setError("");
     if (processing) {
-      setImportMinimized(false);
       setImportOpen(true);
       return;
     }
@@ -1430,7 +1431,6 @@ export function App() {
     setInterrupted(null);
     setError("");
     setImportOpen(false);
-    setImportMinimized(false);
   };
 
   const removeDocument = async (document) => {
@@ -1454,6 +1454,7 @@ export function App() {
         onImport={openImport}
         onOpen={openDocument}
         onResume={resumeDocument}
+        onStop={stopDocumentProcessing}
         onDelete={removeDocument}
         onOpenStorage={() => {
           refreshStorageStatus().catch(() => {});
@@ -1479,9 +1480,6 @@ export function App() {
       ) : null}
       <ImportDialog
         open={importOpen}
-        minimized={importMinimized}
-        onMinimize={() => { setImportMinimized(true); setImportOpen(false); }}
-        onRestore={() => { setImportMinimized(false); setImportOpen(true); }}
         onClose={() => !processing && !interrupted && setImportOpen(false)}
         onChoose={handleFile}
         onInterrupt={() => importControllerRef.current?.abort()}

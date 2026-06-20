@@ -30,6 +30,8 @@ When implementing from a selected generated mock, treat that image as the source
 - Opening a document uses the inverse sheet transition: the reader rises from the bottom over the library. Both entry and dismissal use a deliberately unhurried 700ms easing with an even, readable travel pace.
 - Production is hosted free on GitHub Pages at `https://read.loooke.net/`; production assets and PWA routes therefore use the domain root rather than the former `/pdf-voice/` project subpath.
 - PDF imports are durable jobs: the source file and a library record are saved before parsing begins, incomplete pages display “暂未完成识别”, each completed page is checkpointed locally, and interrupted jobs remain available to resume.
+- Background recognition does not use a floating progress panel. Its library row owns the task controls: an active job shows a stop button, and a paused job shows a resume button.
+- In the mobile reader, the app shell, reader header, tabs, and player remain fixed. Only the recognized-text area or original-page stage owns vertical scrolling; opening the reader locks document-level scrolling.
 - Locally generated document IDs use the shared `createId()` compatibility helper; direct `crypto.randomUUID()` calls are avoided because iOS Safari omits that API on non-secure origins.
 - The home header omits the redundant local-only badge and uses a circular storage-percentage control that opens storage details.
 - The large import hero appears only while the library is empty. Once documents exist, importing moves to a compact “导入 PDF” action at the upper-right of “我的文档”.
