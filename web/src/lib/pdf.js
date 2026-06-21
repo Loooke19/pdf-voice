@@ -15,7 +15,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 const ILLUSTRATION_NOTICE = "【此处为配图，请查看原始版面】";
 const OCR_BASE = `${import.meta.env.BASE_URL}ocr`;
-const PDF_RANGE_CHUNK_SIZE = 1024 * 1024;
 
 function localOcrOptions(logger) {
   return {
@@ -50,46 +49,12 @@ async function renderPage(page) {
   return canvas;
 }
 
-class BlobRangeTransport extends pdfjsLib.PDFDataRangeTransport {
-  constructor(file, initialData) {
-    super(file.size, initialData, false, file.name);
-    this.file = file;
-    this.aborted = false;
-    this.transportReady();
-  }
-
-  async requestDataRange(begin, end) {
-    if (this.aborted) return;
-    try {
-      const chunk = new Uint8Array(await this.file.slice(begin, end).arrayBuffer());
-      if (!this.aborted) this.onDataRange(begin, chunk);
-    } catch {
-      if (!this.aborted) this.onDataRange(begin, null);
-    }
-  }
-
-  abort() {
-    this.aborted = true;
-  }
-}
-
 async function openLocalPdf(file) {
-  const initialEnd = Math.min(file.size, PDF_RANGE_CHUNK_SIZE);
-  const initialData = new Uint8Array(await file.slice(0, initialEnd).arrayBuffer());
-  const range = new BlobRangeTransport(file, initialData);
-  const task = pdfjsLib.getDocument({
-    range,
-    length: file.size,
-    rangeChunkSize: PDF_RANGE_CHUNK_SIZE,
-    disableStream: true,
-    disableAutoFetch: true,
-  });
-  try {
-    return await task.promise;
-  } catch (error) {
-    range.abort();
-    throw error;
-  }
+  // Passing a Blob URL or a custom range transport is unreliable after an
+  // installed iOS PWA restarts. PDF.js transfers this ArrayBuffer directly to
+  // its worker, avoiding WebKit network/range and structured-clone failures.
+  const data = new Uint8Array(await file.arrayBuffer());
+  return pdfjsLib.getDocument({ data }).promise;
 }
 
 function normalizeOcrText(text) {
@@ -274,6 +239,7 @@ export async function processPdf(file, {
     } else {
       await checkpoint(pages, pdf.numPages, initialOcrPages, illustrationPages);
     }
+    page.cleanup();
     report({
       value: 4 + (pageNumber / pdf.numPages) * 56,
       label: "正在提取文字",
@@ -352,6 +318,9 @@ export async function processPdf(file, {
           label: "正在识别扫描页",
           detail: `第 ${pageNumber} 页 · ${index + 1} / ${pagesNeedingOcr.length}`,
         });
+        canvas.width = 1;
+        canvas.height = 1;
+        page.cleanup();
         await new Promise((resolve) => window.setTimeout(resolve, 20));
       }
     } catch (error) {
@@ -454,6 +423,10 @@ export async function recognizePdfPage(file, pageNumber, { onProgress, signal })
       hasIllustration,
     };
   } finally {
+    canvas.width = 1;
+    canvas.height = 1;
+    page.cleanup();
+    await pdf.destroy();
     signal?.removeEventListener("abort", abortWorker);
     await terminate();
   }
